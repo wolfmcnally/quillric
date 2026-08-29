@@ -1,0 +1,9 @@
+.env
+fixtures/
+out/
+transcripts/
+comparisons/
+analysis/
+.DS_Store
+__pycache__/
+*.py[cod]

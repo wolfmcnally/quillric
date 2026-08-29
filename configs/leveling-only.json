@@ -1,0 +1,15 @@
+{
+  "denoise": false,
+  "leveler": true,
+  "levelerstrength_speech": 110,
+  "levelerstrength_music": 0,
+  "compressor_speech": "off",
+  "compressor_music": "off",
+  "msclassifier": "on",
+  "filtering": false,
+  "normloudness": false,
+  "silence_cutter": false,
+  "filler_cutter": false,
+  "cough_cutter": false,
+  "music_cutter": false
+}

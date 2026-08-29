@@ -1,0 +1,20 @@
+{
+  "denoise": true,
+  "denoisemethod": "dynamic",
+  "denoiseamount": 6,
+  "deverbamount": -1,
+  "debreathamount": -1,
+  "leveler": true,
+  "levelerstrength_speech": 110,
+  "levelerstrength_music": 0,
+  "compressor_speech": "soft",
+  "compressor_music": "off",
+  "msclassifier": "on",
+  "filtering": true,
+  "filtermethod": "autoeq",
+  "normloudness": false,
+  "silence_cutter": false,
+  "filler_cutter": false,
+  "cough_cutter": false,
+  "music_cutter": false
+}
