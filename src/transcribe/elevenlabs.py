@@ -38,7 +38,7 @@ def load_api_key() -> str:
         if value := os.environ.get(variable):
             return value
 
-    candidates = (Path.cwd() / ".env", Path(__file__).resolve().parents[1] / ".env")
+    candidates = (Path.cwd() / ".env", Path(__file__).resolve().parents[2] / ".env")
     seen: set[Path] = set()
     for candidate in candidates:
         resolved = candidate.resolve()

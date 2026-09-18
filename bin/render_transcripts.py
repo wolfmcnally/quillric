@@ -8,7 +8,8 @@ import json
 import sys
 from pathlib import Path
 
-from elevenlabs_transcribe import render_markdown
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from transcribe.elevenlabs import render_markdown  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

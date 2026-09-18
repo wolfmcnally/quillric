@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import importlib.machinery
-import importlib.util
+import hashlib
 import io
 import json
 import os
@@ -16,12 +15,8 @@ from unittest.mock import Mock, patch
 
 BIN_DIR = Path(__file__).resolve().parents[1] / "bin"
 SCRIPT = BIN_DIR / "transcribe"
-sys.path.insert(0, str(BIN_DIR))
-LOADER = importlib.machinery.SourceFileLoader("transcribe_cli", str(SCRIPT))
-SPEC = importlib.util.spec_from_loader(LOADER.name, LOADER)
-assert SPEC
-transcribe_cli = importlib.util.module_from_spec(SPEC)
-LOADER.exec_module(transcribe_cli)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from transcribe import cli as transcribe_cli  # noqa: E402
 
 
 def sample_transcript() -> dict:
@@ -414,11 +409,30 @@ class PipelineTests(unittest.TestCase):
                 sorted(path.name for path in destination.iterdir()),
                 [
                     "hearing-adjusted.mp3",
+                    "hearing-package.json",
                     "hearing-raw.json",
+                    "hearing-speakers.json",
                     "hearing-transcription.md",
                     "hearing.wav",
                 ],
             )
+            sidecar = json.loads((destination / "hearing-package.json").read_text())
+            self.assertEqual(sidecar["schema"], "transcribe.package.v1")
+            self.assertEqual(
+                sidecar["source"],
+                {
+                    "filename": "hearing.wav",
+                    "sha256": hashlib.sha256(b"original audio").hexdigest(),
+                    "bytes": len(b"original audio"),
+                },
+            )
+            self.assertEqual(
+                sidecar["files"]["adjusted"]["sha256"],
+                hashlib.sha256(b"adjusted mp3").hexdigest(),
+            )
+            markdown = (destination / "hearing-transcription.md").read_text()
+            self.assertIn(f'source_sha256: "{sidecar["source"]["sha256"]}"', markdown)
+            self.assertIn("| speaker_0 |  |", markdown)
             self.assertEqual((destination / "hearing.wav").read_bytes(), b"original audio")
             self.assertEqual(
                 (destination / "hearing-adjusted.mp3").read_bytes(), b"adjusted mp3"

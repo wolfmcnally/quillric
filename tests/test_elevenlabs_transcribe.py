@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-import importlib.util
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "bin" / "elevenlabs_transcribe.py"
-SPEC = importlib.util.spec_from_file_location("elevenlabs_transcribe", SCRIPT)
-assert SPEC and SPEC.loader
-transcribe = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(transcribe)
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+sys.path.insert(0, str(SRC_DIR))
+from transcribe import elevenlabs as transcribe  # noqa: E402
 
 
 class FormattingTests(unittest.TestCase):

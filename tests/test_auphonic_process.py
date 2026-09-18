@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import importlib.util
+import sys
 from email.message import Message
 import io
 import tempfile
@@ -10,11 +10,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "bin" / "auphonic_process.py"
-SPEC = importlib.util.spec_from_file_location("auphonic_process", SCRIPT)
-assert SPEC and SPEC.loader
-auphonic = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(auphonic)
+SRC_DIR = Path(__file__).resolve().parents[1] / "src"
+sys.path.insert(0, str(SRC_DIR))
+from transcribe import auphonic  # noqa: E402
 
 
 class ProductionPayloadTests(unittest.TestCase):
