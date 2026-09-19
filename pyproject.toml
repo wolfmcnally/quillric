@@ -1,12 +1,15 @@
 [project]
 name = "transcribe"
-version = "1.1.0"
+version = "1.2.0"
 description = "Audio or video to a self-contained, diarized transcription package with source identity and an assignable speaker table."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 authors = [{ name = "Wolf McNally", email = "wolf@wolfmcnally.com" }]
 dependencies = []
+
+[project.optional-dependencies]
+fingerprint = ["numpy>=1.24"]
 
 [project.scripts]
 transcribe = "transcribe.cli:main"

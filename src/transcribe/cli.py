@@ -28,7 +28,7 @@ from .render import (  # noqa: F401  (re-exported for callers of this module)
 )
 
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 PACKAGE_ROOT = Path(__file__).resolve().parent
 DEFAULT_AUPHONIC_CONFIG = PACKAGE_ROOT / "leveling-only.json"
 DEFAULT_DIARIZATION_THRESHOLD = 0.22
@@ -579,7 +579,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="transcribe",
         description=__doc__,
-        epilog="Run 'transcribe speakers PACKAGE [ID=NAME ...]' to show or edit a package's speaker table.",
+        epilog="Run 'transcribe speakers PACKAGE [ID=NAME ...]' to show or edit a package's speaker table, and 'transcribe duplicates PATH ...' to find the same audio in other formats.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("input_file", type=Path)
@@ -676,6 +676,10 @@ def main(argv: list[str] | None = None) -> int:
         from . import speakers_cli
 
         return speakers_cli.main(arguments[1:])
+    if arguments[:1] == ["duplicates"]:
+        from . import fingerprint_cli
+
+        return fingerprint_cli.main(arguments[1:])
     try:
         run_pipeline(parse_args(arguments))
     except (PipelineError, auphonic.AuphonicError, elevenlabs.TranscriptionError, OSError) as error:

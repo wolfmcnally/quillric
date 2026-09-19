@@ -131,6 +131,29 @@ under `## Speakers`, and a named turn keeps the provider's identity visible:
 Naming is a record of someone's judgment, not voice identification: nothing here
 infers who a speaker is.
 
+## Duplicates
+
+The same recording often arrives more than once: as `.m4a` and again as `.mp3`, at another bitrate, trimmed, or quieter. Bytes and durations differ, so a hash cannot see it, and transcribing both pays twice. `transcribe duplicates` finds them locally; nothing leaves the machine.
+
+```sh
+transcribe duplicates /recordings                       # directories are searched recursively
+transcribe duplicates /recordings --cache ~/.cache/transcribe-fingerprints --workers 8 --json
+```
+
+It needs `numpy` (`pip install transcribe[fingerprint]`) and `ffmpeg`. Each file's first audio stream is decoded to 5512 Hz mono, and every 46 ms a 32-bit code is taken from the sign of energy differences between 33 log-spaced bands across time and frequency, the scheme of Haitsma and Kalker's "A Highly Robust Audio Fingerprinting System" (ISMIR 2002). An index of codes proposes a time offset for a pair of files, files of nearly equal length are also compared directly, and the proposal is verified by the bit error rate over every aligned, non-silent frame. Verified at or below 0.25 is the same audio; unrelated audio sits near 0.5.
+
+The report groups files that are the **same recording** (each covers at least 95% of the other), and lists separately a recording that **contains** another (a clip, with the offset where it starts) and a partial **overlap**; those are reported, never grouped, because a clip is not a duplicate. It also gives the count and hours of unique recordings, which is what a transcription budget should be based on. Silence and undecodable files match nothing, and an undecodable file is reported, not skipped quietly.
+
+Measured on an 8.5 minute recording: lossless, 64 kbit AAC, 24 kbit 8 kHz MP3, 24 kbit Opus, and a copy trimmed by 3.4 s and lowered 12 dB all verified at a bit error rate of 0.00 to 0.19 and grouped together; a two-minute excerpt was reported as contained at the right offset; two unrelated recordings measured 0.49. Fingerprinting ran at about 600 times real time on one core. As of 2026-09-18.
+
+```python
+from transcribe import fingerprint
+
+prints = [fingerprint.fingerprint_file(path) for path in paths]
+matches = fingerprint.find_matches(prints)
+groups = fingerprint.duplicate_groups(prints, matches)
+```
+
 ## Library use
 
 ```python
