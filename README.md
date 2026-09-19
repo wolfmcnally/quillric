@@ -116,7 +116,18 @@ transcribe hearing.mp3 --dry-run             # measures, and says what it would 
 
 **Leveling is off by default.** In a paired test of thirteen five-minute excerpts spanning 9 to 35 dB of spread, leveled and unleveled audio produced the same number of words (within 2%), the same words in the quiet stretches, the same speakers and, in eleven of thirteen, identical speaker attribution. Leveled audio scored slightly higher recognition confidence on uneven recordings. What did differ was the wording, by 4 to 7% on uneven audio, but a control showed why: **the same unleveled audio transcribed twice agreed with itself only 95 to 97% on hard recordings** (99.7% on an easy one). Most of the apparent leveling effect was the service varying from run to run. The earlier fixture study that chose the leveling-only preset compared Auphonic presets with one another; it did not show leveled audio transcribing better than unleveled. As of 2026-09-18. Without `--leveling on` or an uneven recording under `--leveling auto`, Auphonic is never contacted and no Auphonic key is needed; the package then has no `-adjusted.mp3`.
 
-**The second pass** follows from that control. For an uneven recording the audio is transcribed a second time with identical settings, and the places where the passes differ are kept: `filename-second-raw.json` is the second response, the sidecar's `second_pass` holds the agreement and every difference with its time and surrounding words, and the Markdown gains an `## Uncertain passages` table ahead of the transcript. The first pass stays the transcript; neither is treated as right. This points a reviewer at exactly the words the service is unsure of, for the price of one more transcription.
+**The second pass** follows from that control. For an uneven recording the audio is transcribed a second time with identical settings, and **one transcript is made from both passes, with their disagreements kept in the flow**:
+
+```markdown
+[00:04:12.300 --> 00:04:19.850] **speaker_3:** I went through a {POST | police} academy, and then I {— | or} I was assigned
+[00:04:20.100 --> 00:04:20.900] **speaker_1 or speaker_3:** Okay.
+```
+
+Where the passes heard different words, both readings sit inline as `{first | second}`, first pass first, with `—` where a pass heard nothing. Where they gave the same words to different speakers, that stretch is its own turn labelled with both. Reading the first alternative everywhere gives back the first pass word for word, and the second alternative the second pass; nothing is invented or dropped, and neither pass is treated as right. Casing and punctuation are not disagreements.
+
+The provider's speaker labels are arbitrary per run, so the second pass's labels are first matched to the first pass's by the identically recognised words they share, and failing that by when they spoke. A voice only the second pass told apart keeps its own identity, `second:speaker_N`, and gets a row in the speaker table so it can be named. Once two disputed identities carry the same name the dispute is over, and the turn reads `Jane Smith (speaker_1, speaker_3)`.
+
+`filename-second-raw.json` keeps the second response, and the sidecar's `second_pass` holds the agreement and every word difference with its time and surrounding words, as an index for a reviewer. `Package.merged_turns()` returns the merged turns to a program.
 
 The sidecar records the decision either way: `leveling.mode`, `leveling.applied`, the threshold, and the measured levels.
 

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from . import elevenlabs
+from . import elevenlabs, merge
 from .render import render_transcript_markdown
 
 PACKAGE_SCHEMA = "transcribe.package.v1"
@@ -66,11 +66,23 @@ def speaker_rows(transcript: dict[str, Any]) -> list[dict[str, Any]]:
     return list(rows.values())
 
 
-def new_speaker_table(transcript: dict[str, Any], source_sha256: str) -> dict[str, Any]:
+def new_speaker_table(transcript: dict[str, Any], source_sha256: str, second_transcript: dict[str, Any] | None = None) -> dict[str, Any]:
+    rows = speaker_rows(transcript)
+    if second_transcript is not None:
+        # A voice only the second pass told apart still needs a row, or it could never be named.
+        turns = merge.merged_turns(transcript, second_transcript)
+        for identity in merge.second_only_speakers(turns):
+            mine = [turn for turn in turns if identity in turn["speakers"]]
+            rows.append({
+                "id": identity, "name": None, "note": "heard as a separate voice by the second pass only",
+                "turns": len(mine), "words": sum(len(turn["text"].split()) for turn in mine),
+                "speaking_seconds": round(sum(max(0.0, float(turn["end"] or 0) - float(turn["start"] or 0)) for turn in mine), 3),
+                "first_start": mine[0]["start"], "last_end": mine[-1]["end"],
+            })
     return {
         "schema": SPEAKERS_SCHEMA,
         "source_sha256": source_sha256,
-        "speakers": speaker_rows(transcript),
+        "speakers": rows,
     }
 
 
@@ -198,8 +210,22 @@ class Package:
     def people(self) -> dict[str, list[str]]:
         return people(self.speakers)
 
+    def second_transcript(self) -> dict[str, Any] | None:
+        """The second pass, when one was made, verified against the hash the sidecar recorded."""
+        entry = self.sidecar["files"].get("second_raw")
+        if not entry:
+            return None
+        path = self.directory / entry["filename"]
+        if sha256_file(path) != entry["sha256"]:
+            raise PackageError(f"second transcript changed since packaging: {path}")
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def merged_turns(self) -> list[dict[str, Any]]:
+        """The transcript as turns, with both passes' disagreements kept in the flow."""
+        return merge.merged_turns(self.transcript(), self.second_transcript())
+
     def render(self) -> str:
-        return render_markdown(self.transcript(), self.sidecar, self.speakers)
+        return render_markdown(self.transcript(), self.sidecar, self.speakers, self.second_transcript())
 
     def assign(
         self, names: dict[str, str | None], notes: dict[str, str | None] | None = None
@@ -212,11 +238,12 @@ class Package:
 
 
 def render_markdown(
-    transcript: dict[str, Any], sidecar: dict[str, Any], speakers: dict[str, Any]
+    transcript: dict[str, Any], sidecar: dict[str, Any], speakers: dict[str, Any], second_transcript: dict[str, Any] | None = None
 ) -> str:
     return render_transcript_markdown(
         transcript=transcript,
         speakers=speakers,
+        second_transcript=second_transcript,
         source_name=sidecar["source"]["filename"],
         source_sha256=sidecar["source"]["sha256"],
         adjusted_name=(sidecar["files"]["adjusted"] or {}).get("filename"),
@@ -262,9 +289,9 @@ def write_package_files(
         second_pass=second_pass,
         second_raw=second_raw,
     )
-    speakers = new_speaker_table(transcript, sidecar["source"]["sha256"])
+    speakers = new_speaker_table(transcript, sidecar["source"]["sha256"], second_transcript)
     package = Package(directory, sidecar, speakers)
     _write_json(directory / f"{stem}-package.json", sidecar)
     _write_json(package.path("speakers"), speakers)
-    package.path("markdown").write_text(render_markdown(transcript, sidecar, speakers), encoding="utf-8")
+    package.path("markdown").write_text(render_markdown(transcript, sidecar, speakers, second_transcript), encoding="utf-8")
     return package

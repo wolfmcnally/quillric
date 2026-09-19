@@ -146,12 +146,12 @@ class PipelineDecisionTests(unittest.TestCase):
         self.assertEqual(json.loads((package.directory / "call-second-raw.json").read_text())["transcription_id"], "second")
         self.assertEqual(package.transcript()["transcription_id"], "pass")  # the first pass stays the transcript
         markdown = package.path("markdown").read_text()
-        self.assertIn("## Uncertain passages", markdown)
-        self.assertIn("| 00:00:02.000 | we sent **direct** emails | we sent **threat** emails |", markdown)
+        self.assertIn("**speaker_0:** we sent {direct | threat} emails", markdown)  # both readings, in the flow
+        self.assertIn("Word disagreements: 1. Speaker disagreements: 0.", markdown)
         self.assertIn("  differences: 1", markdown)
-        self.assertLess(markdown.index("## Uncertain passages"), markdown.index("## Transcript"))
+        self.assertNotIn("## Uncertain passages", markdown)
         package.assign({"speaker_0": "Jane Smith"})
-        self.assertIn("## Uncertain passages", package.path("markdown").read_text())  # survives re-rendering
+        self.assertIn("**Jane Smith (speaker_0):** we sent {direct | threat} emails", package.path("markdown").read_text())  # survives re-rendering
 
     def test_the_threshold_is_adjustable_and_second_pass_can_be_forced_or_refused(self) -> None:
         _, client, _ = self.run_pipeline([(8.0, 0.5), (8.0, 0.5 / 10 ** (28 / 20))], "--uneven-threshold", "35")

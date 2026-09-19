@@ -17,7 +17,7 @@ import contextlib
 import io
 from pathlib import Path
 
-from . import levels, second_pass
+from . import levels, merge, second_pass
 from .package import (
     PACKAGE_SCHEMA,
     SPEAKERS_SCHEMA,
@@ -37,6 +37,7 @@ __all__ = [
     "PackageError",
     "assign_names",
     "levels",
+    "merge",
     "new_speaker_table",
     "people",
     "render_markdown",

@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from . import elevenlabs
+from . import merge
 
 
 def webvtt_timestamp(seconds: float | int | None) -> str:
@@ -174,54 +174,39 @@ def render_speaker_table(speakers: dict[str, Any]) -> list[str]:
     return lines
 
 
-def render_uncertain_passages(second_pass: dict[str, Any]) -> list[str]:
-    """Where a second transcription of the same audio differed. Neither pass is treated as right."""
-    lines = [
-        "## Uncertain passages",
+def render_disagreement_note(counts: dict[str, int]) -> list[str]:
+    """How to read a transcript merged from two passes. Neither pass is treated as right."""
+    return [
+        "This transcript merges two transcriptions of the same audio. Where they heard different words, both readings "
+        "are shown as `{first | second}`, with `—` where one heard nothing. Where they gave the same words to different "
+        "speakers, that stretch is its own turn labelled with both. "
+        f"Word disagreements: {counts['word_disagreements']}. Speaker disagreements: {counts['speaker_disagreements']}.",
         "",
-        "A second transcription of the same audio differed here. The transcript below is the first pass.",
-        "",
-        "| Time | First pass | Second pass |",
-        "| --- | --- | --- |",
     ]
-    for item in second_pass.get("differences", []):
-        shown = lambda words: f"{_table_cell(item.get('before'))} **{_table_cell(words) or '∅'}** {_table_cell(item.get('after'))}".strip()  # noqa: E731
-        lines.append(f"| {webvtt_timestamp(item.get('start'))} | {shown(item.get('first'))} | {shown(item.get('second'))} |")
-    lines.append("")
-    return lines
-
-
-def speaker_label(speaker_id: str, names: dict[str, str]) -> str:
-    """The provider's identity stays visible beside any assigned name."""
-    name = names.get(speaker_id)
-    return f"{name} ({speaker_id})" if name else speaker_id
 
 
 def render_transcript_markdown(
     *,
     transcript: dict[str, Any],
     speakers: dict[str, Any] | None = None,
+    second_transcript: dict[str, Any] | None = None,
     **frontmatter: Any,
 ) -> str:
-    second_pass = frontmatter.get("second_pass")
     lines = render_frontmatter(transcript=transcript, **frontmatter)
+    turns = merge.merged_turns(transcript, second_transcript)
     names: dict[str, str] = {}
     if speakers is not None:
-        names = {
-            str(row["id"]): str(row["name"])
-            for row in speakers.get("speakers", [])
-            if row.get("name")
-        }
+        names = {str(row["id"]): str(row["name"]) for row in speakers.get("speakers", []) if row.get("name")}
         lines.extend(render_speaker_table(speakers))
-        if second_pass and second_pass.get("differences"):
-            lines.extend(render_uncertain_passages(second_pass))
         lines.extend(["## Transcript", ""])
-    for turn in elevenlabs.speaker_turns(transcript.get("words", [])):
+        if second_transcript is not None:
+            lines.extend(render_disagreement_note(merge.summary(turns)))
+    for turn in turns:
         text = str(turn.get("text") or "").strip()
         if not text:
             continue
         start = webvtt_timestamp(turn.get("start"))
         end = webvtt_timestamp(turn.get("end"))
-        lines.append(f"[{start} --> {end}] **{speaker_label(str(turn['speaker']), names)}:** {text}")
+        lines.append(f"[{start} --> {end}] **{merge.speaker_label(turn['speakers'], names)}:** {text}")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
