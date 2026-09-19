@@ -401,7 +401,7 @@ class PipelineTests(unittest.TestCase):
                 redirect_stdout(standard_output),
                 redirect_stderr(standard_error),
             ):
-                exit_code = transcribe_cli.main([str(source), "--quiet"])
+                exit_code = transcribe_cli.main([str(source), "--quiet", "--leveling", "on", "--second-pass", "off"])
 
             destination = parent / "hearing"
             self.assertEqual(exit_code, 0)
@@ -469,7 +469,7 @@ class PipelineTests(unittest.TestCase):
                 redirect_stdout(io.StringIO()),
                 redirect_stderr(io.StringIO()),
             ):
-                exit_code = transcribe_cli.main([str(source)])
+                exit_code = transcribe_cli.main([str(source), "--leveling", "on", "--second-pass", "off"])
 
             self.assertEqual(exit_code, 1)
             self.assertFalse((parent / "hearing").exists())
@@ -525,6 +525,8 @@ class PipelineTests(unittest.TestCase):
                         "--resume-auphonic-production",
                         "jDThHAYXcvCMMgzcMwdzbB",
                         "--quiet",
+                        "--second-pass",
+                        "off",
                     ]
                 )
 
@@ -570,7 +572,7 @@ class PipelineTests(unittest.TestCase):
                 redirect_stdout(io.StringIO()),
                 redirect_stderr(io.StringIO()),
             ):
-                exit_code = transcribe_cli.main([str(source), "--force"])
+                exit_code = transcribe_cli.main([str(source), "--force", "--leveling", "on", "--second-pass", "off"])
 
             self.assertEqual(exit_code, 1)
             self.assertEqual(
@@ -599,7 +601,7 @@ class PipelineTests(unittest.TestCase):
                 redirect_stdout(io.StringIO()),
                 redirect_stderr(io.StringIO()),
             ):
-                exit_code = transcribe_cli.main([str(source)])
+                exit_code = transcribe_cli.main([str(source), "--leveling", "on", "--second-pass", "off"])
 
             self.assertEqual(exit_code, 130)
             self.assertFalse((parent / "hearing").exists())

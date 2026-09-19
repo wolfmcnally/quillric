@@ -112,13 +112,24 @@ def build_sidecar(
     version: str,
     generated_at: str,
     source: Path,
-    adjusted: Path,
+    adjusted: Path | None,
     raw_json: Path,
     speakers_name: str,
     markdown_name: str,
     transcript: dict[str, Any],
     settings: dict[str, Any],
+    leveling: dict[str, Any] | None = None,
+    second_pass: dict[str, Any] | None = None,
+    second_raw: Path | None = None,
 ) -> dict[str, Any]:
+    files: dict[str, Any] = {
+        "adjusted": {"filename": adjusted.name, "sha256": sha256_file(adjusted)} if adjusted is not None else None,
+        "raw": {"filename": raw_json.name, "sha256": sha256_file(raw_json)},
+        "speakers": {"filename": speakers_name},
+        "markdown": {"filename": markdown_name},
+    }
+    if second_raw is not None:
+        files["second_raw"] = {"filename": second_raw.name, "sha256": sha256_file(second_raw)}
     return {
         "schema": PACKAGE_SCHEMA,
         "tool_version": version,
@@ -128,12 +139,9 @@ def build_sidecar(
             "sha256": sha256_file(source),
             "bytes": source.stat().st_size,
         },
-        "files": {
-            "adjusted": {"filename": adjusted.name, "sha256": sha256_file(adjusted)},
-            "raw": {"filename": raw_json.name, "sha256": sha256_file(raw_json)},
-            "speakers": {"filename": speakers_name},
-            "markdown": {"filename": markdown_name},
-        },
+        "files": files,
+        "leveling": leveling or {"mode": "on", "applied": adjusted is not None, "uneven_threshold_db": None, "levels": None},
+        "second_pass": second_pass,
         "transcript": {
             "transcription_id": transcript.get("transcription_id"),
             "detected_language": transcript.get("language_code"),
@@ -211,7 +219,9 @@ def render_markdown(
         speakers=speakers,
         source_name=sidecar["source"]["filename"],
         source_sha256=sidecar["source"]["sha256"],
-        adjusted_name=sidecar["files"]["adjusted"]["filename"],
+        adjusted_name=(sidecar["files"]["adjusted"] or {}).get("filename"),
+        leveling=sidecar.get("leveling"),
+        second_pass=sidecar.get("second_pass"),
         generated_at=sidecar["generated_at"],
         **sidecar["settings"],
     )
@@ -222,15 +232,22 @@ def write_package_files(
     version: str,
     generated_at: str,
     source: Path,
-    adjusted: Path,
+    adjusted: Path | None,
     raw_json: Path,
     transcript: dict[str, Any],
     settings: dict[str, Any],
+    leveling: dict[str, Any] | None = None,
+    second_pass: dict[str, Any] | None = None,
+    second_transcript: dict[str, Any] | None = None,
 ) -> Package:
     """Write raw JSON, speaker table, sidecar, and Markdown beside SOURCE's copy in its directory."""
     directory = raw_json.parent
     stem = source.stem
     _write_json(raw_json, transcript)
+    second_raw: Path | None = None
+    if second_transcript is not None:
+        second_raw = directory / f"{stem}-second-raw.json"
+        _write_json(second_raw, second_transcript)
     sidecar = build_sidecar(
         version=version,
         generated_at=generated_at,
@@ -241,6 +258,9 @@ def write_package_files(
         markdown_name=f"{stem}-transcription.md",
         transcript=transcript,
         settings=settings,
+        leveling=leveling,
+        second_pass=second_pass,
+        second_raw=second_raw,
     )
     speakers = new_speaker_table(transcript, sidecar["source"]["sha256"])
     package = Package(directory, sidecar, speakers)

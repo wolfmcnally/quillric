@@ -42,9 +42,9 @@ def transcript_speakers(transcript: dict[str, Any]) -> list[str]:
 def render_frontmatter(
     *,
     source_name: str,
-    adjusted_name: str,
+    adjusted_name: str | None,
     transcript: dict[str, Any],
-    production_id: str,
+    production_id: str | None,
     algorithms: dict[str, Any],
     mp3_bitrate: int,
     model_id: str,
@@ -57,6 +57,8 @@ def render_frontmatter(
     speaker_roles: bool,
     source_sha256: str | None = None,
     generated_at: str | None = None,
+    leveling: dict[str, Any] | None = None,
+    second_pass: dict[str, Any] | None = None,
 ) -> list[str]:
     speakers = transcript_speakers(transcript)
     lines = [
@@ -82,16 +84,43 @@ def render_frontmatter(
             f"audio_duration_seconds: {yaml_scalar(transcript.get('audio_duration_secs'))}",
             f"transcription_id: {yaml_scalar(transcript.get('transcription_id'))}",
             f"generated_at: {yaml_scalar(generated_at or datetime.now(timezone.utc).isoformat())}",
-            "preprocessing:",
-            "  provider: \"Auphonic\"",
-            f"  production_id: {yaml_scalar(production_id)}",
-            "  output_format: \"mp3\"",
-            f"  output_bitrate_kbps: {mp3_bitrate}",
-            "  algorithms:",
         ]
     )
-    for key in sorted(algorithms):
-        lines.append(f"    {key}: {yaml_scalar(algorithms[key])}")
+    measured = (leveling or {}).get("levels") or {}
+    if leveling is not None:
+        lines.extend(
+            [
+                "leveling:",
+                f"  mode: {yaml_scalar(leveling.get('mode'))}",
+                f"  applied: {yaml_scalar(bool(leveling.get('applied')))}",
+                f"  speech_level_spread_db: {yaml_scalar(measured.get('spread_db'))}",
+                f"  quiet_speech_share: {yaml_scalar(measured.get('quiet_share'))}",
+                f"  uneven_threshold_db: {yaml_scalar(leveling.get('uneven_threshold_db'))}",
+            ]
+        )
+    if production_id is None:
+        lines.append("preprocessing: null")
+    else:
+        lines.extend(
+            [
+                "preprocessing:",
+                "  provider: \"Auphonic\"",
+                f"  production_id: {yaml_scalar(production_id)}",
+                "  output_format: \"mp3\"",
+                f"  output_bitrate_kbps: {mp3_bitrate}",
+                "  algorithms:",
+            ]
+        )
+        for key in sorted(algorithms):
+            lines.append(f"    {key}: {yaml_scalar(algorithms[key])}")
+    if second_pass is not None:
+        lines.extend(
+            [
+                "second_pass:",
+                f"  agreement: {yaml_scalar(second_pass.get('agreement'))}",
+                f"  differences: {len(second_pass.get('differences', []))}",
+            ]
+        )
     lines.extend(
         [
             "speech_to_text:",
@@ -145,6 +174,23 @@ def render_speaker_table(speakers: dict[str, Any]) -> list[str]:
     return lines
 
 
+def render_uncertain_passages(second_pass: dict[str, Any]) -> list[str]:
+    """Where a second transcription of the same audio differed. Neither pass is treated as right."""
+    lines = [
+        "## Uncertain passages",
+        "",
+        "A second transcription of the same audio differed here. The transcript below is the first pass.",
+        "",
+        "| Time | First pass | Second pass |",
+        "| --- | --- | --- |",
+    ]
+    for item in second_pass.get("differences", []):
+        shown = lambda words: f"{_table_cell(item.get('before'))} **{_table_cell(words) or '∅'}** {_table_cell(item.get('after'))}".strip()  # noqa: E731
+        lines.append(f"| {webvtt_timestamp(item.get('start'))} | {shown(item.get('first'))} | {shown(item.get('second'))} |")
+    lines.append("")
+    return lines
+
+
 def speaker_label(speaker_id: str, names: dict[str, str]) -> str:
     """The provider's identity stays visible beside any assigned name."""
     name = names.get(speaker_id)
@@ -157,6 +203,7 @@ def render_transcript_markdown(
     speakers: dict[str, Any] | None = None,
     **frontmatter: Any,
 ) -> str:
+    second_pass = frontmatter.get("second_pass")
     lines = render_frontmatter(transcript=transcript, **frontmatter)
     names: dict[str, str] = {}
     if speakers is not None:
@@ -166,6 +213,8 @@ def render_transcript_markdown(
             if row.get("name")
         }
         lines.extend(render_speaker_table(speakers))
+        if second_pass and second_pass.get("differences"):
+            lines.extend(render_uncertain_passages(second_pass))
         lines.extend(["## Transcript", ""])
     for turn in elevenlabs.speaker_turns(transcript.get("words", [])):
         text = str(turn.get("text") or "").strip()

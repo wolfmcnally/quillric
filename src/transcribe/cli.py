@@ -17,7 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from . import auphonic, elevenlabs
+from . import auphonic, elevenlabs, levels
+from .second_pass import compare as compare_passes
 from .package import write_package_files
 from .render import (  # noqa: F401  (re-exported for callers of this module)
     render_frontmatter,
@@ -28,7 +29,7 @@ from .render import (  # noqa: F401  (re-exported for callers of this module)
 )
 
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 PACKAGE_ROOT = Path(__file__).resolve().parent
 DEFAULT_AUPHONIC_CONFIG = PACKAGE_ROOT / "leveling-only.json"
 DEFAULT_DIARIZATION_THRESHOLD = 0.22
@@ -280,6 +281,7 @@ def run_pipeline(args: argparse.Namespace) -> Path:
         settings_summary = {
             "input": str(source),
             "output_directory": str(output_dir),
+            "leveling": {"mode": args.leveling, "second_pass": args.second_pass, "uneven_threshold_db": args.uneven_threshold},
             "auphonic": {
                 "algorithms": algorithms,
                 "mp3_bitrate_kbps": args.mp3_bitrate,
@@ -297,6 +299,18 @@ def run_pipeline(args: argparse.Namespace) -> Path:
             },
         }
         reporter.event("validation", "completed", "Paths and settings are valid")
+        if args.dry_run and "auto" in {args.leveling, args.second_pass}:
+            try:
+                planned = levels.measure(source)  # local and free, so a dry run can say what would happen
+            except levels.LevelsError as error:
+                settings_summary["leveling"].update(levels=None, measurement_error=str(error))  # the real run would stop here
+            else:
+                settings_summary["leveling"].update(
+                    levels=planned.as_dict(),
+                    uneven=planned.uneven(args.uneven_threshold),
+                    would_level=args.leveling == "on" or (args.leveling == "auto" and planned.uneven(args.uneven_threshold)),
+                    would_transcribe_twice=args.second_pass == "on" or (args.second_pass == "auto" and planned.uneven(args.uneven_threshold)),
+                )
         if args.dry_run:
             print(json.dumps(settings_summary, indent=2, ensure_ascii=False))
             reporter.event("pipeline", "completed", "Dry run complete")
@@ -328,130 +342,145 @@ def run_pipeline(args: argparse.Namespace) -> Path:
             unit="bytes",
         )
 
-        auphonic_client = auphonic.AuphonicClient(auphonic.load_api_key())
-        details: dict[str, Any] | None = None
-        effective_algorithms = algorithms
+        measured: levels.Levels | None = None
+        if args.leveling == "auto" or args.second_pass == "auto":
+            reporter.event("levels", "active", "Measuring speech levels locally")
+            measured = levels.measure(source_copy)
+            reporter.event("levels", "completed", f"Speech level spread {measured.spread_db} dB", spread_db=measured.spread_db)
+        uneven = measured is not None and measured.uneven(args.uneven_threshold)
+        leveled = args.leveling == "on" or (args.leveling == "auto" and uneven) or args.resume_auphonic_production is not None
+        second_pass_wanted = args.second_pass == "on" or (args.second_pass == "auto" and uneven)
+        production_id: str | None = None
+        effective_algorithms: dict[str, Any] = {}
         effective_mp3_bitrate = args.mp3_bitrate
-        if args.resume_auphonic_production is not None:
-            production_id = args.resume_auphonic_production
-            reporter.event(
-                "auphonic_resume",
-                "active",
-                "Loading existing Auphonic production",
-                production_id=production_id,
-            )
-            details = auphonic_client.details(production_id)
-            remote_algorithms = details.get("algorithms")
-            if isinstance(remote_algorithms, dict):
-                effective_algorithms = remote_algorithms
-            reporter.event(
-                "auphonic_resume",
-                "completed",
-                "Existing Auphonic production loaded",
-                production_id=production_id,
-            )
-        else:
-            reporter.event(
-                "auphonic_submit", "active", "Creating Auphonic production"
-            )
-            output_file = {
-                "format": "mp3",
-                "bitrate": str(args.mp3_bitrate),
-                "filename": adjusted_name,
-            }
-            production_id = auphonic_client.create_production(
-                source_copy,
-                source.stem + "-adjusted",
-                algorithms,
-                output_file,
-            )
-            reporter.event(
-                "auphonic_submit",
-                "completed",
-                "Auphonic production created",
-                production_id=production_id,
-            )
+        stt_input = source_copy
+        if leveled:
+            auphonic_client = auphonic.AuphonicClient(auphonic.load_api_key())
+            details: dict[str, Any] | None = None
+            effective_algorithms = algorithms
+            effective_mp3_bitrate = args.mp3_bitrate
+            if args.resume_auphonic_production is not None:
+                production_id = args.resume_auphonic_production
+                reporter.event(
+                    "auphonic_resume",
+                    "active",
+                    "Loading existing Auphonic production",
+                    production_id=production_id,
+                )
+                details = auphonic_client.details(production_id)
+                remote_algorithms = details.get("algorithms")
+                if isinstance(remote_algorithms, dict):
+                    effective_algorithms = remote_algorithms
+                reporter.event(
+                    "auphonic_resume",
+                    "completed",
+                    "Existing Auphonic production loaded",
+                    production_id=production_id,
+                )
+            else:
+                reporter.event(
+                    "auphonic_submit", "active", "Creating Auphonic production"
+                )
+                output_file = {
+                    "format": "mp3",
+                    "bitrate": str(args.mp3_bitrate),
+                    "filename": adjusted_name,
+                }
+                production_id = auphonic_client.create_production(
+                    source_copy,
+                    source.stem + "-adjusted",
+                    algorithms,
+                    output_file,
+                )
+                reporter.event(
+                    "auphonic_submit",
+                    "completed",
+                    "Auphonic production created",
+                    production_id=production_id,
+                )
 
-            auphonic_client.upload(
-                production_id,
-                source_copy,
+                auphonic_client.upload(
+                    production_id,
+                    source_copy,
+                    progress=byte_progress(
+                        reporter, "auphonic_upload", "Uploading source to Auphonic"
+                    ),
+                )
+                reporter.event(
+                    "auphonic_upload",
+                    "completed",
+                    "Source uploaded to Auphonic",
+                    current=source_copy.stat().st_size,
+                    total=source_copy.stat().st_size,
+                    unit="bytes",
+                )
+                reporter.event(
+                    "auphonic_processing",
+                    "active",
+                    "Starting Auphonic processing",
+                    production_id=production_id,
+                )
+                auphonic_client.start(production_id)
+
+            def report_auphonic_status(
+                production: dict[str, Any], status_changed: bool
+            ) -> None:
+                remote_status = production.get("status")
+                status_message = str(
+                    production.get("status_string") or f"status {remote_status}"
+                )
+                reporter.event(
+                    "auphonic_processing",
+                    "active",
+                    status_message,
+                    production_id=production_id,
+                    remote_status=remote_status,
+                    remote_status_changed=status_changed,
+                )
+
+            if details is None or details.get("status") != auphonic.TERMINAL_STATUS_DONE:
+                details = auphonic.wait_for_completion(
+                    auphonic_client,
+                    production_id,
+                    args.poll_interval,
+                    args.wait_timeout,
+                    status_callback=report_auphonic_status,
+                )
+            for remote_output in details.get("output_files", []):
+                if not isinstance(remote_output, dict) or remote_output.get("format") != "mp3":
+                    continue
+                remote_bitrate = remote_output.get("bitrate")
+                if isinstance(remote_bitrate, int):
+                    effective_mp3_bitrate = remote_bitrate
+                elif isinstance(remote_bitrate, str) and remote_bitrate.isdecimal():
+                    effective_mp3_bitrate = int(remote_bitrate)
+                break
+            reporter.event(
+                "auphonic_processing",
+                "completed",
+                "Auphonic processing complete",
+                production_id=production_id,
+            )
+            download_url = auphonic._result_download_url(details, "mp3")
+            auphonic_client.download(
+                download_url,
+                adjusted_path,
                 progress=byte_progress(
-                    reporter, "auphonic_upload", "Uploading source to Auphonic"
+                    reporter, "auphonic_download", "Downloading adjusted MP3"
                 ),
             )
+            if not adjusted_path.is_file() or adjusted_path.stat().st_size == 0:
+                raise PipelineError("Auphonic returned an empty adjusted MP3")
             reporter.event(
-                "auphonic_upload",
+                "auphonic_download",
                 "completed",
-                "Source uploaded to Auphonic",
-                current=source_copy.stat().st_size,
-                total=source_copy.stat().st_size,
+                "Adjusted MP3 downloaded",
+                current=adjusted_path.stat().st_size,
+                total=adjusted_path.stat().st_size,
                 unit="bytes",
             )
-            reporter.event(
-                "auphonic_processing",
-                "active",
-                "Starting Auphonic processing",
-                production_id=production_id,
-            )
-            auphonic_client.start(production_id)
 
-        def report_auphonic_status(
-            production: dict[str, Any], status_changed: bool
-        ) -> None:
-            remote_status = production.get("status")
-            status_message = str(
-                production.get("status_string") or f"status {remote_status}"
-            )
-            reporter.event(
-                "auphonic_processing",
-                "active",
-                status_message,
-                production_id=production_id,
-                remote_status=remote_status,
-                remote_status_changed=status_changed,
-            )
-
-        if details is None or details.get("status") != auphonic.TERMINAL_STATUS_DONE:
-            details = auphonic.wait_for_completion(
-                auphonic_client,
-                production_id,
-                args.poll_interval,
-                args.wait_timeout,
-                status_callback=report_auphonic_status,
-            )
-        for remote_output in details.get("output_files", []):
-            if not isinstance(remote_output, dict) or remote_output.get("format") != "mp3":
-                continue
-            remote_bitrate = remote_output.get("bitrate")
-            if isinstance(remote_bitrate, int):
-                effective_mp3_bitrate = remote_bitrate
-            elif isinstance(remote_bitrate, str) and remote_bitrate.isdecimal():
-                effective_mp3_bitrate = int(remote_bitrate)
-            break
-        reporter.event(
-            "auphonic_processing",
-            "completed",
-            "Auphonic processing complete",
-            production_id=production_id,
-        )
-        download_url = auphonic._result_download_url(details, "mp3")
-        auphonic_client.download(
-            download_url,
-            adjusted_path,
-            progress=byte_progress(
-                reporter, "auphonic_download", "Downloading adjusted MP3"
-            ),
-        )
-        if not adjusted_path.is_file() or adjusted_path.stat().st_size == 0:
-            raise PipelineError("Auphonic returned an empty adjusted MP3")
-        reporter.event(
-            "auphonic_download",
-            "completed",
-            "Adjusted MP3 downloaded",
-            current=adjusted_path.stat().st_size,
-            total=adjusted_path.stat().st_size,
-            unit="bytes",
-        )
+            stt_input = adjusted_path
 
         elevenlabs_client = elevenlabs.ElevenLabsClient(elevenlabs.load_api_key())
         elevenlabs_upload_completed = False
@@ -482,7 +511,7 @@ def run_pipeline(args: argparse.Namespace) -> Path:
                 reporter.event(
                     "elevenlabs_upload",
                     "completed",
-                    "Adjusted MP3 uploaded to ElevenLabs",
+                    "Audio uploaded to ElevenLabs",
                     current=current,
                     total=total,
                     unit="bytes",
@@ -502,7 +531,7 @@ def run_pipeline(args: argparse.Namespace) -> Path:
 
         try:
             transcript = elevenlabs_client.transcribe(
-                adjusted_path,
+                stt_input,
                 args.max_speakers,
                 diarization_threshold,
                 model_id=args.model,
@@ -521,7 +550,7 @@ def run_pipeline(args: argparse.Namespace) -> Path:
             reporter.event(
                 "elevenlabs_upload",
                 "completed",
-                "Adjusted MP3 uploaded to ElevenLabs",
+                "Audio uploaded to ElevenLabs",
             )
         reporter.event(
             "elevenlabs_transcription",
@@ -535,12 +564,36 @@ def run_pipeline(args: argparse.Namespace) -> Path:
             speaker_count=len(transcript_speakers(transcript)),
         )
 
+        second_transcript: dict[str, Any] | None = None
+        if second_pass_wanted:
+            reporter.event("second_pass", "active", "Transcribing a second time to find uncertain words")
+            second_transcript = elevenlabs_client.transcribe(
+                stt_input,
+                args.max_speakers,
+                diarization_threshold,
+                model_id=args.model,
+                language_code=args.language_code,
+                tag_audio_events=args.audio_events,
+                no_verbatim=args.clean_transcript,
+                use_speaker_library=args.speaker_library,
+                detect_speaker_roles=args.speaker_roles,
+            )
+            reporter.event("second_pass", "completed", "Second transcription received")
+
         reporter.event("artifacts", "active", "Writing JSON, sidecar, speaker table, and Markdown")
         write_package_files(
             version=VERSION,
             generated_at=datetime.now(timezone.utc).isoformat(),
             source=source_copy,
-            adjusted=adjusted_path,
+            adjusted=adjusted_path if leveled else None,
+            leveling={
+                "mode": args.leveling,
+                "applied": leveled,
+                "uneven_threshold_db": args.uneven_threshold,
+                "levels": measured.as_dict() if measured is not None else None,
+            },
+            second_pass=compare_passes(transcript, second_transcript) if second_transcript is not None else None,
+            second_transcript=second_transcript,
             raw_json=raw_json_path,
             transcript=transcript,
             settings={
@@ -606,6 +659,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true", help="print resolved settings without API calls or writes")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
 
+    decision_group = parser.add_argument_group("Leveling and second pass")
+    decision_group.add_argument(
+        "--leveling",
+        choices=["off", "auto", "on"],
+        default="off",
+        help="level the audio at Auphonic before transcribing: never, only when the recording is uneven, or always",
+    )
+    decision_group.add_argument(
+        "--second-pass",
+        choices=["off", "auto", "on"],
+        default="auto",
+        help="transcribe a second time and list where the passes differ: never, only when the recording is uneven, or always",
+    )
+    decision_group.add_argument(
+        "--uneven-threshold",
+        type=float,
+        default=levels.DEFAULT_UNEVEN_DB,
+        metavar="DB",
+        help="speech level spread, measured locally, at or above which a recording counts as uneven",
+    )
     auphonic_group = parser.add_argument_group("Auphonic preprocessing")
     auphonic_group.add_argument(
         "--resume-auphonic-production",
@@ -682,7 +755,7 @@ def main(argv: list[str] | None = None) -> int:
         return fingerprint_cli.main(arguments[1:])
     try:
         run_pipeline(parse_args(arguments))
-    except (PipelineError, auphonic.AuphonicError, elevenlabs.TranscriptionError, OSError) as error:
+    except (PipelineError, auphonic.AuphonicError, elevenlabs.TranscriptionError, levels.LevelsError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

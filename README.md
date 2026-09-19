@@ -1,8 +1,10 @@
 # transcribe
 
 `transcribe` turns one audio or video file into a self-contained transcription
-package. It copies the source, runs an Auphonic preprocessing pass, transcribes
-the adjusted MP3 with ElevenLabs Scribe v2, preserves the complete API response,
+package. It copies the source, measures how uneven the speech level is, optionally
+levels the audio at Auphonic, transcribes it with ElevenLabs Scribe v2 (twice when
+the recording is uneven, to find the words the service is unsure of), preserves the
+complete API response,
 records the identity of the source recording, and renders a diarized Markdown
 transcript with a speaker table in which names can be assigned later.
 
@@ -36,8 +38,9 @@ With only an input path, the package is created beside the input:
   filename.mp3
   filename/
     filename.mp3
-    filename-adjusted.mp3
+    filename-adjusted.mp3        # only when the audio was leveled
     filename-raw.json
+    filename-second-raw.json     # only when a second pass ran
     filename-package.json
     filename-speakers.json
     filename-transcription.md
@@ -98,6 +101,24 @@ existing production and its actual algorithm metadata, downloads its adjusted
 MP3, and continues with ElevenLabs and artifact publication. Provider-returned
 download URLs are percent-encoded before use, including filenames containing
 spaces, while existing signed percent escapes are preserved.
+
+## Leveling and the second pass
+
+Before anything is sent, the recording is measured locally with `ffmpeg`: its speech is cut into 0.4 s windows, silence is dropped, and the **spread** is the distance in decibels between loud speech (95th percentile) and quiet speech (10th). One steady voice measures a few decibels; a room with good and bad microphones measures 26 and up. A recording at or above `--uneven-threshold` (default 25 dB) is *uneven*. The measurement covers the whole file, because a long recording can be even within every five minutes and uneven between its sections.
+
+```sh
+transcribe call.m4a                          # no leveling; a second pass only if the recording is uneven
+transcribe hearing.mp3 --leveling auto       # level at Auphonic only if uneven
+transcribe hearing.mp3 --leveling on         # always level (the behaviour before 1.3)
+transcribe hearing.mp3 --second-pass on --uneven-threshold 22
+transcribe hearing.mp3 --dry-run             # measures, and says what it would do, without sending anything
+```
+
+**Leveling is off by default.** In a paired test of thirteen five-minute excerpts spanning 9 to 35 dB of spread, leveled and unleveled audio produced the same number of words (within 2%), the same words in the quiet stretches, the same speakers and, in eleven of thirteen, identical speaker attribution. Leveled audio scored slightly higher recognition confidence on uneven recordings. What did differ was the wording, by 4 to 7% on uneven audio, but a control showed why: **the same unleveled audio transcribed twice agreed with itself only 95 to 97% on hard recordings** (99.7% on an easy one). Most of the apparent leveling effect was the service varying from run to run. The earlier fixture study that chose the leveling-only preset compared Auphonic presets with one another; it did not show leveled audio transcribing better than unleveled. As of 2026-09-18. Without `--leveling on` or an uneven recording under `--leveling auto`, Auphonic is never contacted and no Auphonic key is needed; the package then has no `-adjusted.mp3`.
+
+**The second pass** follows from that control. For an uneven recording the audio is transcribed a second time with identical settings, and the places where the passes differ are kept: `filename-second-raw.json` is the second response, the sidecar's `second_pass` holds the agreement and every difference with its time and surrounding words, and the Markdown gains an `## Uncertain passages` table ahead of the transcript. The first pass stays the transcript; neither is treated as right. This points a reviewer at exactly the words the service is unsure of, for the price of one more transcription.
+
+The sidecar records the decision either way: `leveling.mode`, `leveling.applied`, the threshold, and the measured levels.
 
 ## Speakers
 
