@@ -17,6 +17,7 @@ import contextlib
 import io
 from pathlib import Path
 
+from . import levels, second_pass
 from .package import (
     PACKAGE_SCHEMA,
     SPEAKERS_SCHEMA,
@@ -35,9 +36,11 @@ __all__ = [
     "Package",
     "PackageError",
     "assign_names",
+    "levels",
     "new_speaker_table",
     "people",
     "render_markdown",
+    "second_pass",
     "sha256_file",
     "transcribe_file",
 ]
