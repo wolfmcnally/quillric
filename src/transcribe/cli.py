@@ -264,7 +264,10 @@ def replace_directory(staging: Path, destination: Path, force: bool) -> None:
         )
 
 
-def run_pipeline(args: argparse.Namespace) -> Path:
+def run_pipeline(args: argparse.Namespace, *, announce: bool = True) -> Path:
+    """Run the pipeline and return the package directory. ``announce`` prints the directory (or a dry
+    run's settings) to standard output, as the command does; a library caller turns it off rather than
+    swapping ``sys.stdout``, which is process-wide and unsafe when recordings convert concurrently."""
     progress_mode = "quiet" if args.quiet else args.progress
     reporter = ProgressReporter(progress_mode)
     staging: Path | None = None
@@ -312,7 +315,8 @@ def run_pipeline(args: argparse.Namespace) -> Path:
                     would_transcribe_twice=args.second_pass == "on" or (args.second_pass == "auto" and planned.uneven(args.uneven_threshold)),
                 )
         if args.dry_run:
-            print(json.dumps(settings_summary, indent=2, ensure_ascii=False))
+            if announce:
+                print(json.dumps(settings_summary, indent=2, ensure_ascii=False))
             reporter.event("pipeline", "completed", "Dry run complete")
             return output_dir
         if output_dir.exists() and not args.force:
@@ -618,7 +622,8 @@ def run_pipeline(args: argparse.Namespace) -> Path:
         reporter.event(
             "pipeline", "completed", "Transcription package complete", output=str(output_dir)
         )
-        print(output_dir, flush=True)
+        if announce:
+            print(output_dir, flush=True)
         return output_dir
     except BaseException as error:
         if staging is not None:

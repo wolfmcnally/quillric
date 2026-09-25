@@ -124,6 +124,37 @@ class PipelineDecisionTests(unittest.TestCase):
         self.assertEqual(code, 0)
         return source, client, transcribe.Package.load(Path(self.temporary.name) / "call")
 
+    def test_the_library_call_prints_nothing_and_never_swaps_standard_output(self) -> None:
+        # Standard output is process-wide; swapping it around a call breaks every other thread's
+        # output when recordings convert concurrently (a caller's whole report once vanished).
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        source = tone_wav(Path(self.temporary.name) / "call.wav", [(12.0, 0.5)])
+        client = Mock()
+        client.transcribe.side_effect = [transcript("we", "sent", "direct", "emails")]
+        seen = []
+        stream = io.StringIO()
+
+        with (
+            patch.object(cli.elevenlabs, "load_api_key", return_value="key"),
+            patch.object(cli.elevenlabs, "ElevenLabsClient", return_value=client),
+            patch.object(cli.auphonic, "load_api_key", side_effect=AssertionError("Auphonic must not be touched")),
+            redirect_stdout(stream),
+            redirect_stderr(io.StringIO()),
+        ):
+            original = cli.run_pipeline
+
+            def observed(*args, **kwargs):
+                seen.append(sys.stdout)
+                return original(*args, **kwargs)
+
+            with patch.object(cli, "run_pipeline", observed):
+                package = transcribe.transcribe_file(source, "--output-dir", str(Path(self.temporary.name) / "call"))
+            self.assertIs(sys.stdout, stream)
+        self.assertEqual(seen, [stream])
+        self.assertEqual(stream.getvalue(), "")
+        self.assertEqual(package.directory.resolve(), (Path(self.temporary.name) / "call").resolve())
+
     def test_an_even_recording_is_sent_as_it_is_once_and_auphonic_is_never_touched(self) -> None:
         source, client, package = self.run_pipeline([(12.0, 0.5)])
         self.assertEqual(client.transcribe.call_count, 1)

@@ -13,8 +13,6 @@ Library use::
 
 from __future__ import annotations
 
-import contextlib
-import io
 from pathlib import Path
 
 from . import levels, merge, second_pass
@@ -56,6 +54,5 @@ def transcribe_file(source: str | Path, *options: str) -> Package:
     from . import cli
 
     args = cli.parse_args([str(source), "--quiet", *options])
-    with contextlib.redirect_stdout(io.StringIO()):  # the command prints the package path
-        directory = cli.run_pipeline(args)
+    directory = cli.run_pipeline(args, announce=False)
     return Package.load(directory)
