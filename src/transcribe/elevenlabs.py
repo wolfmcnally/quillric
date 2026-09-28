@@ -12,6 +12,7 @@ import re
 import shlex
 import ssl
 import sys
+import time
 import urllib.parse
 import uuid
 from pathlib import Path
@@ -19,6 +20,9 @@ from typing import Any, Callable
 
 
 API_BASE = "https://api.elevenlabs.io"
+# Waits before retrying a request the provider refused with HTTP 429 (a rate or concurrency limit). The
+# provider's error guidance asks for exponential backoff; the refused request did no transcription.
+RETRY_DELAYS_SECONDS = (15.0, 30.0, 60.0, 120.0)
 
 
 class TranscriptionError(RuntimeError):
@@ -97,10 +101,21 @@ def transcription_fields(
 
 
 class ElevenLabsClient:
-    def __init__(self, api_key: str, api_base: str = API_BASE, timeout: float = 900.0):
+    def __init__(
+        self,
+        api_key: str,
+        api_base: str = API_BASE,
+        timeout: float = 900.0,
+        *,
+        retry_delays: tuple[float, ...] = RETRY_DELAYS_SECONDS,
+        sleep: Callable[[float], None] | None = None,
+    ):
         self.api_key = api_key
         self.api_base = api_base.rstrip("/")
         self.timeout = timeout
+        self.retry_delays = tuple(retry_delays)
+        self.sleep = sleep if sleep is not None else time.sleep
+        self.retries = 0  # 429 refusals retried by this client, for callers that report them
 
     def transcribe(
         self,
@@ -119,17 +134,6 @@ class ElevenLabsClient:
         parsed = urllib.parse.urlsplit(self.api_base)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise TranscriptionError(f"Unsupported API base URL: {self.api_base}")
-        if parsed.scheme == "https":
-            connection: http.client.HTTPConnection = http.client.HTTPSConnection(
-                parsed.hostname,
-                port=parsed.port,
-                timeout=self.timeout,
-                context=ssl.create_default_context(),
-            )
-        else:
-            connection = http.client.HTTPConnection(
-                parsed.hostname, port=parsed.port, timeout=self.timeout
-            )
 
         boundary = f"----elevenlabs-{uuid.uuid4().hex}"
         fields = transcription_fields(
@@ -157,6 +161,42 @@ class ElevenLabsClient:
         content_length = len(field_body) + len(file_header) + audio_size + len(suffix)
         request_path = f"{parsed.path.rstrip('/')}/v1/speech-to-text"
 
+        for delay in (*self.retry_delays, None):
+            status, response_body = self._send(
+                parsed, request_path, boundary, field_body, file_header, suffix, audio_path, content_length,
+                progress,
+            )
+            if status != 429 or delay is None:
+                break
+            self.retries += 1
+            self.sleep(delay)
+        return self._document(status, response_body)
+
+    def _connection(self, parsed: urllib.parse.SplitResult) -> http.client.HTTPConnection:
+        if parsed.scheme == "https":
+            return http.client.HTTPSConnection(
+                parsed.hostname,
+                port=parsed.port,
+                timeout=self.timeout,
+                context=ssl.create_default_context(),
+            )
+        return http.client.HTTPConnection(parsed.hostname, port=parsed.port, timeout=self.timeout)
+
+    def _send(
+        self,
+        parsed: urllib.parse.SplitResult,
+        request_path: str,
+        boundary: str,
+        field_body: bytes,
+        file_header: bytes,
+        suffix: bytes,
+        audio_path: Path,
+        content_length: int,
+        progress: Callable[[int, int | None], None] | None,
+    ) -> tuple[int, bytes]:
+        """One request; the status and body. A refused request is sent again whole, file included."""
+        connection = self._connection(parsed)
+        audio_size = audio_path.stat().st_size
         try:
             connection.putrequest("POST", request_path)
             connection.putheader("xi-api-key", self.api_key)
@@ -178,26 +218,28 @@ class ElevenLabsClient:
                         progress(bytes_sent, audio_size)
             connection.send(suffix)
             response = connection.getresponse()
-            response_body = response.read()
+            return response.status, response.read()
         except (OSError, http.client.HTTPException) as error:
             raise TranscriptionError(f"Transcription request failed: {error}") from error
         finally:
             connection.close()
 
+    @staticmethod
+    def _document(status: int, response_body: bytes) -> dict[str, Any]:
         try:
             document = json.loads(response_body)
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             raise TranscriptionError(
-                f"ElevenLabs returned HTTP {response.status} with a non-JSON response"
+                f"ElevenLabs returned HTTP {status} with a non-JSON response"
             ) from error
-        if response.status != 200:
+        if status != 200:
             detail = document.get("detail") if isinstance(document, dict) else None
             if isinstance(detail, dict):
                 message = detail.get("message") or detail.get("status")
             else:
                 message = detail
             raise TranscriptionError(
-                f"ElevenLabs returned HTTP {response.status}: {message or 'unknown error'}"
+                f"ElevenLabs returned HTTP {status}: {message or 'unknown error'}"
             )
         if not isinstance(document, dict) or not isinstance(document.get("words"), list):
             raise TranscriptionError("ElevenLabs returned an unexpected transcript shape")

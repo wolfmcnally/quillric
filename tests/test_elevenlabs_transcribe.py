@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -124,3 +125,65 @@ class WritingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RetryTests(unittest.TestCase):
+    """A request the provider refuses with HTTP 429 is sent again after a wait; nothing else is retried."""
+
+    def _serve(self, statuses: list[int]):
+        import http.server
+        import threading
+
+        received: list[int] = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802 - the handler's protocol name
+                received.append(int(self.headers["Content-Length"]))
+                self.rfile.read(int(self.headers["Content-Length"]))
+                status = statuses.pop(0)
+                body = (json.dumps({"words": []}) if status == 200 else
+                        json.dumps({"detail": {"code": "concurrent_limit_exceeded",
+                                               "message": "Too many concurrent requests"}}))
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(body.encode())
+
+            def log_message(self, *args) -> None:
+                pass
+
+        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.shutdown)
+        return f"http://127.0.0.1:{server.server_address[1]}", received
+
+    def _client(self, base: str, waits: list[float]):
+        return transcribe.ElevenLabsClient("test-key", api_base=base, retry_delays=(1.0, 2.0), sleep=waits.append)
+
+    def _audio(self) -> Path:
+        directory = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__("shutil").rmtree(directory))
+        (directory / "clip.mp3").write_bytes(b"not really audio" * 100)
+        return directory / "clip.mp3"
+
+    def test_refusals_are_retried_with_backoff_then_succeed(self) -> None:
+        base, received = self._serve([429, 429, 200])
+        waits: list[float] = []
+        client = self._client(base, waits)
+        self.assertEqual(client.transcribe(self._audio()), {"words": []})
+        self.assertEqual(waits, [1.0, 2.0])
+        self.assertEqual(client.retries, 2)
+        self.assertEqual(len(received), 3)
+        self.assertEqual(len(set(received)), 1)  # the whole request, file included, each time
+
+    def test_a_refusal_that_outlasts_the_waits_fails_and_other_errors_are_not_retried(self) -> None:
+        base, received = self._serve([429, 429, 429])
+        waits: list[float] = []
+        with self.assertRaisesRegex(transcribe.TranscriptionError, "HTTP 429: Too many concurrent requests"):
+            self._client(base, waits).transcribe(self._audio())
+        self.assertEqual((waits, len(received)), ([1.0, 2.0], 3))
+        base, received = self._serve([401])
+        waits = []
+        with self.assertRaisesRegex(transcribe.TranscriptionError, "HTTP 401"):
+            self._client(base, waits).transcribe(self._audio())
+        self.assertEqual((waits, len(received)), ([], 1))

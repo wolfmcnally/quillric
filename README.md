@@ -206,6 +206,8 @@ package.render()             # the Markdown, as a string
 `transcribe_file` takes the command's own flags as extra arguments, runs the paid
 pipeline quietly, and raises on failure.
 
+A request ElevenLabs refuses with HTTP 429 (a rate or concurrency limit) is sent again after 15, 30, 60 and 120 seconds, the backoff the provider's error guidance asks for; a refused request did no transcription, so a completed first pass is never repeated because the second was refused. Any other error, or a refusal that outlasts the waits, raises as before. Keep simultaneous requests within the account's limit, remembering that ElevenLabs transcribes a recording longer than eight minutes in up to four parallel pieces, each counted against that limit.
+
 ## Progress and scripting
 
 Routine progress is written to standard error; the final package path is the

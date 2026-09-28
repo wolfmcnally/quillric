@@ -29,7 +29,7 @@ from .render import (  # noqa: F401  (re-exported for callers of this module)
 )
 
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 PACKAGE_ROOT = Path(__file__).resolve().parent
 DEFAULT_AUPHONIC_CONFIG = PACKAGE_ROOT / "leveling-only.json"
 DEFAULT_DIARIZATION_THRESHOLD = 0.22
