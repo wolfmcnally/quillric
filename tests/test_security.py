@@ -58,6 +58,85 @@ class DownloadSecurityTests(unittest.TestCase):
         self.assertIsNone(returned.get_header("Authorization"))
 
 
+class JsonApiSecurityTests(unittest.TestCase):
+    def test_unsafe_api_bases_fail_before_network(self):
+        for base in ["http://auphonic.com", "file:///tmp/api",
+                     "https://user:password@auphonic.com", "https://auphonic.com:bad",
+                     "https://auphonic.com:99999", "https://auphonic.com?key=a",
+                     "https://auphonic.com#fragment"]:
+            with self.subTest(base=base), patch.object(auphonic.urllib.request, "build_opener") as opener:
+                with self.assertRaises(auphonic.AuphonicError):
+                    auphonic.AuphonicClient("dummy-key", api_base=base)
+                opener.assert_not_called()
+
+    def test_json_api_uses_safe_opener_for_get_and_post(self):
+        for method, payload in [("GET", None), ("POST", {"algorithms": {"leveler": True}})]:
+            with self.subTest(method=method):
+                opener = MagicMock()
+                opener.open.return_value.__enter__.return_value.read.return_value = b'{"status_code": 200, "data": {"uuid": "synthetic"}}'
+                with patch.object(auphonic.urllib.request, "build_opener", return_value=opener) as build_opener, patch.object(auphonic.urllib.request, "urlopen", side_effect=AssertionError("unsafe default opener")):
+                    result = auphonic.AuphonicClient("dummy-key")._request_json(method, "/api/productions.json", payload)
+                self.assertEqual(result, {"uuid": "synthetic"})
+                handler = build_opener.call_args.args[0]
+                self.assertIsInstance(handler, auphonic.CrossOriginAuthStripper)
+                request = opener.open.call_args.args[0]
+                self.assertEqual(request.get_header("Authorization"), "Bearer dummy-key")
+                self.assertEqual(request.get_method(), method)
+                self.assertEqual(request.data, json.dumps(payload).encode() if payload is not None else None)
+                # Exercise the actual handler bound to API calls, including ports and a return hop.
+                same = handler.redirect_request(request, None, 302, "Found", {}, "https://auphonic.com:443/api/next.json")
+                self.assertEqual(same.get_header("Authorization"), "Bearer dummy-key")
+                for other in ["https://external.example/api/next.json", "https://auphonic.com:444/api/next.json", "https://auphonic.com:0/api/next.json"]:
+                    redirected = handler.redirect_request(request, None, 302, "Found", {}, other)
+                    self.assertIsNone(redirected.get_header("Authorization"))
+                    returned = handler.redirect_request(redirected, None, 302, "Found", {}, "https://auphonic.com/api/next.json")
+                    self.assertIsNone(returned.get_header("Authorization"))
+                for unsafe in ["http://auphonic.com/api/next.json", "http://external.example/api/next.json", "https://user@auphonic.com/api/next.json"]:
+                    with self.assertRaises(auphonic.AuphonicError):
+                        handler.redirect_request(request, None, 302, "Found", {}, unsafe)
+
+    def test_real_opener_redirect_chain_never_restores_credentials(self):
+        from email.message import Message
+        from urllib.response import addinfourl
+
+        seen = []
+        routes = ["https://auphonic.com/api/production/synthetic.json",
+                  "https://auphonic.com:443/api/next.json",
+                  "https://storage.example/api/next.json",
+                  "https://auphonic.com/api/final.json"]
+
+        class OfflineHTTPSHandler(auphonic.urllib.request.HTTPSHandler):
+            def https_open(self, request):
+                seen.append((request.full_url, request.get_header("Authorization")))
+                index = routes.index(request.full_url)
+                headers = Message()
+                if index + 1 < len(routes):
+                    headers["Location"] = routes[index + 1]
+                    response = addinfourl(io.BytesIO(b""), headers, request.full_url, 302)
+                    response.msg = "Found"
+                else:
+                    response = addinfourl(io.BytesIO(b'{"status_code": 200, "data": {"uuid": "synthetic"}}'), headers, request.full_url, 200)
+                    response.msg = "OK"
+                return response
+
+        # Only transport is replaced; urllib's opener and redirect dispatch are real.
+        with patch.object(auphonic.urllib.request, "HTTPSHandler", OfflineHTTPSHandler):
+            result = auphonic.AuphonicClient("dummy-key").details("synthetic")
+        self.assertEqual(result, {"uuid": "synthetic"})
+        self.assertEqual(seen, list(zip(routes, ["Bearer dummy-key", "Bearer dummy-key", None, None])))
+
+    def test_mutated_base_cannot_send_plaintext_json_or_upload_credentials(self):
+        client = auphonic.AuphonicClient("dummy-key")
+        client.api_base = "http://127.0.0.1:9999"
+        with patch.object(auphonic.urllib.request, "build_opener") as opener, patch.object(auphonic.http.client, "HTTPConnection") as connection:
+            with self.assertRaises(auphonic.AuphonicError):
+                client.details("synthetic")
+            with self.assertRaises(auphonic.AuphonicError):
+                client.upload("synthetic", Path("does-not-exist.wav"))
+            opener.assert_not_called()
+            connection.assert_not_called()
+
+
 class PackageSecurityTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

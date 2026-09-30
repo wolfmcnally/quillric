@@ -378,11 +378,11 @@ receives the recording only when leveling is selected or an existing production
 is resumed. Level measurement and duplicate detection run locally with ffmpeg.
 `--dry-run` makes no provider calls and loads no credentials.
 
-Auphonic result downloads must use HTTPS, including redirects. Download URLs
+Auphonic API bases and result downloads must use HTTPS, including redirects. API bases and download URLs
 containing username/password credentials are refused. The bearer token is sent
 only to the configured Auphonic HTTPS origin, including its port; external
 storage URLs are fetched without it. A redirect to another origin strips the
-token and it is never restored later in that redirect chain. Signed URL query
+token and it is never restored later in that redirect chain. JSON API calls use the same safe redirect handler; uploads use a direct HTTPS connection and do not follow redirects. API bases with URL credentials, query strings or fragments are refused. There is no plaintext localhost exception: inject a fake client for offline tests. Signed download URL query
 parameters remain intact.
 
 Packages keep the source recording, raw provider responses, timings, settings,

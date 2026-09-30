@@ -255,7 +255,10 @@ def _decode_json(body: bytes, context: str) -> dict[str, Any]:
 class AuphonicClient:
     def __init__(self, api_key: str, api_base: str = API_BASE, timeout: float = 60.0):
         self.api_key = api_key
-        self.api_base = api_base.rstrip("/")
+        self.api_base = _normalized_request_url(api_base).rstrip("/")
+        parsed_base = urllib.parse.urlsplit(self.api_base)
+        if parsed_base.query or parsed_base.fragment:
+            raise AuphonicError("API base URL must not contain a query or fragment")
         self.timeout = timeout
 
     def _request_json(
@@ -266,10 +269,12 @@ class AuphonicClient:
         if body is not None:
             headers["Content-Type"] = "application/json"
         request = urllib.request.Request(
-            f"{self.api_base}{path}", data=body, headers=headers, method=method
+            _normalized_request_url(f"{self.api_base}{path}"),
+            data=body, headers=headers, method=method
         )
+        opener = urllib.request.build_opener(CrossOriginAuthStripper())
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            with opener.open(request, timeout=self.timeout) as response:
                 document = _decode_json(response.read(), path)
         except urllib.error.HTTPError as error:
             error_body = error.read()
@@ -330,21 +335,16 @@ class AuphonicClient:
         source: Path,
         progress: Callable[[int, int | None], None] | None = None,
     ) -> None:
-        parsed = urllib.parse.urlsplit(self.api_base)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        parsed = urllib.parse.urlsplit(_normalized_request_url(self.api_base))
+        if parsed.scheme != "https" or not parsed.hostname:
             raise AuphonicError(f"Unsupported API base URL: {self.api_base}")
         port = parsed.port
-        if parsed.scheme == "https":
-            connection: http.client.HTTPConnection = http.client.HTTPSConnection(
-                parsed.hostname,
-                port=port,
-                timeout=self.timeout,
-                context=ssl.create_default_context(),
-            )
-        else:
-            connection = http.client.HTTPConnection(
-                parsed.hostname, port=port, timeout=self.timeout
-            )
+        connection = http.client.HTTPSConnection(
+            parsed.hostname,
+            port=port,
+            timeout=self.timeout,
+            context=ssl.create_default_context(),
+        )
 
         boundary = f"----auphonic-{uuid.uuid4().hex}"
         safe_name = source.name.replace('"', "_").replace("\r", "_").replace("\n", "_")
