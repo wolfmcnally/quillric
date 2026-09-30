@@ -28,7 +28,7 @@ jobs:
         if: runner.os == 'macOS'
         run: brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
       - name: Install test and build dependencies
-        run: python -m pip install '.[fingerprint]' build
+        run: python -m pip install '.[fingerprint]' build hatchling
       - name: Full offline suite (no skips)
         run: python .github/scripts/test.py
       - name: Build release distributions
