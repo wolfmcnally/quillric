@@ -1,4 +1,4 @@
-"""Audio to diarized transcription packages.
+"""Quillric: audio to diarized transcription packages (import name: transcribe).
 
 Library use::
 

@@ -1,5 +1,5 @@
 [project]
-name = "transcribe"
+name = "quillric"
 version = "1.4.1"
 description = "Audio or video to a self-contained, diarized transcription package with source identity and an assignable speaker table."
 readme = "README.md"
@@ -13,6 +13,9 @@ fingerprint = ["numpy>=1.24"]
 
 [project.scripts]
 transcribe = "transcribe.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/wolfmcnally/quillric"
 
 [build-system]
 requires = ["hatchling"]

@@ -1,6 +1,6 @@
-# transcribe
+# Quillric
 
-`transcribe` turns one audio or video file into a self-contained transcription
+Quillric turns one audio or video file into a self-contained transcription
 package. It copies the source, measures how uneven the speech level is, optionally
 levels the audio at Auphonic, transcribes it with ElevenLabs Scribe v2 (twice when
 the recording is uneven, to find the words the service is unsure of), preserves the
@@ -10,16 +10,48 @@ transcript with a speaker table in which names can be assigned later.
 
 ## Install
 
-The package has no third-party Python dependencies and runs on Python 3.9 or
-newer. The launcher in `bin/` runs the checkout directly with no install step, so a
-symlink puts it on the shell path:
+The distribution is named **`quillric`** (two Ls). The Python import remains
+`transcribe`, and the command remains `transcribe`; APIs, package schemas and
+output filenames are unchanged. The GitHub repository is
+[`wolfmcnally/quillric`](https://github.com/wolfmcnally/quillric).
+
+The core package has no third-party Python dependencies and runs on Python 3.9
+or newer on macOS/Unix. Normal transcription also needs `ffmpeg` on the path.
+Quillric is not published to PyPI yet; install a checkout or a reviewed release
+wheel rather than the unrelated PyPI package named `transcribe`:
 
 ```sh
-ln -s ../DevProjects/transcribe/bin/transcribe ~/bin/transcribe
+git clone https://github.com/wolfmcnally/quillric.git
+cd quillric
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/transcribe --version
 ```
 
-Another Python project can depend on it by path or Git URL and `import transcribe`;
-see [Library use](#library-use).
+Use a dedicated environment. **Do not coinstall distributions `quillric` and
+`transcribe`: they can both own the `transcribe` import and executable.** pip does
+not detect that file-level conflict. When migrating an existing environment,
+uninstall the old `transcribe` distribution first, then install Quillric; a fresh
+environment is preferable. Never uninstall either shared-file distribution after
+coinstallation and assume the other is intact: rebuild the environment instead.
+
+A simple preflight for an existing target environment refuses ambiguous ownership:
+
+```sh
+python -c 'import importlib.metadata as m; import sys; sys.exit("Use a fresh environment: transcribe is already installed") if any(d.metadata["Name"].lower() == "transcribe" for d in m.distributions()) else None'
+```
+
+The launcher in `bin/` still runs the checkout directly without installation. For
+Wolf's existing directory layout its compatible symlink is:
+
+```sh
+ln -s ../DevProjects/quillric/bin/transcribe ~/bin/transcribe
+```
+
+Another Python project can depend on distribution `quillric` by path or Git URL
+and continue to `import transcribe`; see [Library use](#library-use). Renaming the
+distribution does not satisfy a consumer requirement for distribution `transcribe`;
+requirements, source mappings and locks must be upgraded together.
 
 Provide `AUPHONIC_API_KEY` and `ELEVENLABS_API_KEY` in the environment or in a
 `.env` file in the current directory or project root. The command does not print
@@ -172,7 +204,7 @@ transcribe duplicates /recordings                       # directories are search
 transcribe duplicates /recordings --cache ~/.cache/transcribe-fingerprints --workers 8 --json
 ```
 
-It needs `numpy` (`pip install transcribe[fingerprint]`) and `ffmpeg`. Each file's first audio stream is decoded to 5512 Hz mono, and every 46 ms a 32-bit code is taken from the sign of energy differences between 33 log-spaced bands across time and frequency, the scheme of Haitsma and Kalker's "A Highly Robust Audio Fingerprinting System" (ISMIR 2002). An index of codes proposes a time offset for a pair of files, files of nearly equal length are also compared directly, and the proposal is verified by the bit error rate over every aligned, non-silent frame. Verified at or below 0.25 is the same audio; unrelated audio sits near 0.5.
+It needs `numpy` (`.venv/bin/python -m pip install ".[fingerprint]"`) and `ffmpeg`. Each file's first audio stream is decoded to 5512 Hz mono, and every 46 ms a 32-bit code is taken from the sign of energy differences between 33 log-spaced bands across time and frequency, the scheme of Haitsma and Kalker's "A Highly Robust Audio Fingerprinting System" (ISMIR 2002). An index of codes proposes a time offset for a pair of files, files of nearly equal length are also compared directly, and the proposal is verified by the bit error rate over every aligned, non-silent frame. Verified at or below 0.25 is the same audio; unrelated audio sits near 0.5.
 
 The report groups files that are the **same recording** (each covers at least 95% of the other), and lists separately a recording that **contains** another (a clip, with the offset where it starts) and a partial **overlap**; those are reported, never grouped, because a clip is not a duplicate. It also gives the count and hours of unique recordings, which is what a transcription budget should be based on. Silence and undecodable files match nothing, and an undecodable file is reported, not skipped quietly.
 

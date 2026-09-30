@@ -8,7 +8,7 @@ codes survive re-encoding, resampling and level changes; bytes and durations do 
 Matching is two steps. An index of codes votes for (other file, time offset); the winning offset
 is then verified by the bit error rate over every aligned frame. Unrelated audio sits near 0.5.
 
-Needs ``numpy`` (``pip install transcribe[fingerprint]``) and ``ffmpeg`` on the path.
+Needs ``numpy`` (install ``.[fingerprint]`` from the Quillric checkout) and ``ffmpeg`` on the path.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def _numpy() -> Any:
     try:
         import numpy
     except ImportError as exc:
-        raise FingerprintError("fingerprints need numpy: install transcribe[fingerprint]") from exc
+        raise FingerprintError("fingerprints need numpy: install Quillric's fingerprint extra from its checkout (pip install '.[fingerprint]')") from exc
     return numpy
 
 
