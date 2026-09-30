@@ -29,7 +29,7 @@ from .render import (  # noqa: F401  (re-exported for callers of this module)
 )
 
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 PACKAGE_ROOT = Path(__file__).resolve().parent
 DEFAULT_AUPHONIC_CONFIG = PACKAGE_ROOT / "leveling-only.json"
 DEFAULT_DIARIZATION_THRESHOLD = 0.22
@@ -264,10 +264,19 @@ def replace_directory(staging: Path, destination: Path, force: bool) -> None:
         )
 
 
-def run_pipeline(args: argparse.Namespace, *, announce: bool = True) -> Path:
+def run_pipeline(
+    args: argparse.Namespace, *, announce: bool = True,
+    elevenlabs_api_key: str | None = None, auphonic_api_key: str | None = None,
+    elevenlabs_client: elevenlabs.ElevenLabsClient | None = None,
+    auphonic_client: auphonic.AuphonicClient | None = None,
+) -> Path:
     """Run the pipeline and return the package directory. ``announce`` prints the directory (or a dry
     run's settings) to standard output, as the command does; a library caller turns it off rather than
     swapping ``sys.stdout``, which is process-wide and unsafe when recordings convert concurrently."""
+    for key, client, provider in ((elevenlabs_api_key, elevenlabs_client, "ElevenLabs"),
+                                  (auphonic_api_key, auphonic_client, "Auphonic")):
+        if key is not None and (not key or client is not None):
+            raise ValueError(f"{provider}: supply a nonempty key or a client, not both")
     progress_mode = "quiet" if args.quiet else args.progress
     reporter = ProgressReporter(progress_mode)
     staging: Path | None = None
@@ -359,7 +368,8 @@ def run_pipeline(args: argparse.Namespace, *, announce: bool = True) -> Path:
         effective_mp3_bitrate = args.mp3_bitrate
         stt_input = source_copy
         if leveled:
-            auphonic_client = auphonic.AuphonicClient(auphonic.load_api_key())
+            auphonic_client = auphonic_client if auphonic_client is not None else auphonic.AuphonicClient(
+                auphonic_api_key if auphonic_api_key is not None else auphonic.load_api_key())
             details: dict[str, Any] | None = None
             effective_algorithms = algorithms
             effective_mp3_bitrate = args.mp3_bitrate
@@ -486,7 +496,8 @@ def run_pipeline(args: argparse.Namespace, *, announce: bool = True) -> Path:
 
             stt_input = adjusted_path
 
-        elevenlabs_client = elevenlabs.ElevenLabsClient(elevenlabs.load_api_key())
+        elevenlabs_client = elevenlabs_client if elevenlabs_client is not None else elevenlabs.ElevenLabsClient(
+            elevenlabs_api_key if elevenlabs_api_key is not None else elevenlabs.load_api_key())
         elevenlabs_upload_completed = False
         transcription_stop = threading.Event()
         transcription_heartbeat: threading.Thread | None = None

@@ -204,7 +204,25 @@ package.render()             # the Markdown, as a string
 ```
 
 `transcribe_file` takes the command's own flags as extra arguments, runs the paid
-pipeline quietly, and raises on failure.
+pipeline quietly, and raises on failure. Existing calls still load keys from the
+environment or `.env`. Library callers can instead supply per-call credentials:
+
+```python
+package = transcribe.transcribe_file(
+    "hearing.mp3", "--leveling", "off",
+    elevenlabs_api_key=credentials.elevenlabs,
+)
+```
+
+The keyword-only arguments are `elevenlabs_api_key`, `auphonic_api_key`,
+`elevenlabs_client`, and `auphonic_client`. Pass a nonempty key or a client for
+each provider, never both. An omitted provider falls back to environment/`.env`
+lookup only if that provider is needed. Keys are not placed in settings,
+artifacts, or progress output, and the call does not change `os.environ`.
+Injected clients use the existing `ElevenLabsClient` or `AuphonicClient` methods;
+the same transcription client handles both passes. Use a separate client per
+concurrent call unless the client implementation supports sharing. Client
+injection also supports offline tests. No CLI credential flag was added.
 
 A request ElevenLabs refuses with HTTP 429 (a rate or concurrency limit) is sent again after 15, 30, 60 and 120 seconds, the backoff the provider's error guidance asks for; a refused request did no transcription, so a completed first pass is never repeated because the second was refused. Any other error, or a refusal that outlasts the waits, raises as before. Keep simultaneous requests within the account's limit, remembering that ElevenLabs transcribes a recording longer than eight minutes in up to four parallel pieces, each counted against that limit.
 
@@ -305,6 +323,35 @@ Columbia University's
 The document title and interpretation metadata live only in YAML frontmatter,
 including `source_sha256`; the renderer does not add a Markdown title header. The
 body has two sections, `## Speakers` and `## Transcript`.
+
+## Privacy and package trust
+
+A normal transcription sends the recording and filename to ElevenLabs. An
+uneven recording is sent twice under the default second-pass policy. Auphonic
+receives the recording only when leveling is selected or an existing production
+is resumed. Level measurement and duplicate detection run locally with ffmpeg.
+`--dry-run` makes no provider calls and loads no credentials.
+
+Auphonic result downloads must use HTTPS, including redirects. Download URLs
+containing username/password credentials are refused. The bearer token is sent
+only to the configured Auphonic HTTPS origin, including its port; external
+storage URLs are fetched without it. A redirect to another origin strips the
+token and it is never restored later in that redirect chain. Signed URL query
+parameters remain intact.
+
+Packages keep the source recording, raw provider responses, timings, settings,
+and assigned speaker names/notes. Fingerprint caches keep paths, durations and
+acoustic codes. They have no built-in expiry or encryption. Local failure cleanup
+does not delete provider-side recordings or productions; retention and deletion
+at each provider remain the user's responsibility.
+
+A loaded package must use flat filenames. Absolute paths, traversal, and symlinks
+that resolve outside the package are refused for the sidecar, source and every
+referenced file. Paths are checked again for later reads and speaker updates;
+internal symlinks remain supported. Raw hashes detect changes relative to the
+sidecar, not the authenticity of a package whose sidecar can also be edited.
+Use a private working directory: these checks do not protect against a hostile
+process replacing filesystem entries concurrently between validation and I/O.
 
 ## Test
 

@@ -169,6 +169,19 @@ def _write_json(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
+def _package_path(directory: Path, filename: str) -> Path:
+    """Confine a flat package filename to its resolved directory."""
+    if (not isinstance(filename, str) or not filename or filename in {".", ".."}
+            or "/" in filename or "\\" in filename or "\x00" in filename):
+        raise PackageError("package filenames must be nonempty basenames")
+    path = directory / filename
+    try:
+        path.resolve(strict=path.is_symlink()).relative_to(directory.resolve())
+    except (ValueError, OSError, RuntimeError) as error:
+        raise PackageError("package file escapes its directory") from error
+    return path
+
+
 @dataclass
 class Package:
     """A published transcription package on disk."""
@@ -179,22 +192,33 @@ class Package:
 
     @classmethod
     def load(cls, directory: Path) -> "Package":
-        directory = Path(directory)
+        directory = Path(directory).resolve()
         sidecars = sorted(directory.glob("*-package.json"))
         if len(sidecars) != 1:
             raise PackageError(f"expected one *-package.json in {directory}, found {len(sidecars)}")
-        sidecar = json.loads(sidecars[0].read_text(encoding="utf-8"))
+        sidecar = json.loads(_package_path(directory, sidecars[0].name).read_text(encoding="utf-8"))
         if sidecar.get("schema") != PACKAGE_SCHEMA:
             raise PackageError(f"unsupported package schema: {sidecar.get('schema')!r}")
-        speakers = json.loads((directory / sidecar["files"]["speakers"]["filename"]).read_text(encoding="utf-8"))
+        package = cls(directory, sidecar, {})
+        package._validate_paths()
+        speakers = json.loads(package.path("speakers").read_text(encoding="utf-8"))
         if speakers.get("schema") != SPEAKERS_SCHEMA:
             raise PackageError(f"unsupported speaker table schema: {speakers.get('schema')!r}")
         if speakers.get("source_sha256") != sidecar["source"]["sha256"]:
             raise PackageError("speaker table belongs to a different source recording")
         return cls(directory, sidecar, speakers)
 
+    def _validate_paths(self) -> None:
+        # Identity-only source records have no path to dereference; preserve their
+        # historical loadability while validating any filename that is supplied.
+        if "filename" in self.sidecar["source"]:
+            _package_path(self.directory, self.sidecar["source"]["filename"])
+        for entry in self.sidecar["files"].values():
+            if entry is not None:
+                _package_path(self.directory, entry["filename"])
+
     def path(self, role: str) -> Path:
-        return self.directory / self.sidecar["files"][role]["filename"]
+        return _package_path(self.directory, self.sidecar["files"][role]["filename"])
 
     @property
     def source_sha256(self) -> str:
@@ -215,7 +239,7 @@ class Package:
         entry = self.sidecar["files"].get("second_raw")
         if not entry:
             return None
-        path = self.directory / entry["filename"]
+        path = self.path("second_raw")
         if sha256_file(path) != entry["sha256"]:
             raise PackageError(f"second transcript changed since packaging: {path}")
         return json.loads(path.read_text(encoding="utf-8"))
@@ -231,6 +255,7 @@ class Package:
         self, names: dict[str, str | None], notes: dict[str, str | None] | None = None
     ) -> None:
         """Assign names, then write the table and the re-rendered Markdown."""
+        self._validate_paths()
         assign_names(self.speakers, names, notes)
         markdown = self.render()
         _write_json(self.path("speakers"), self.speakers)

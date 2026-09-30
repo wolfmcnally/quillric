@@ -69,7 +69,7 @@ class AuphonicError(RuntimeError):
 def _origin(url: str) -> tuple[str, str | None, int | None]:
     parsed = urllib.parse.urlsplit(url)
     default_port = 443 if parsed.scheme.lower() == "https" else 80
-    return parsed.scheme.lower(), parsed.hostname, parsed.port or default_port
+    return parsed.scheme.lower(), parsed.hostname, parsed.port if parsed.port is not None else default_port
 
 
 class CrossOriginAuthStripper(urllib.request.HTTPRedirectHandler):
@@ -84,6 +84,7 @@ class CrossOriginAuthStripper(urllib.request.HTTPRedirectHandler):
         headers: Any,
         new_url: str,
     ) -> urllib.request.Request | None:
+        new_url = _normalized_request_url(new_url)
         redirected = super().redirect_request(
             request, file_pointer, code, message, headers, new_url
         )
@@ -97,11 +98,14 @@ class CrossOriginAuthStripper(urllib.request.HTTPRedirectHandler):
 
 
 def _normalized_request_url(url: str) -> str:
-    """Return an HTTP(S) URL with request-target characters safely encoded."""
+    """Return a credential-free HTTPS URL with request-target characters encoded."""
     try:
         parsed = urllib.parse.urlsplit(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            raise ValueError("expected an absolute HTTP(S) URL")
+        if parsed.scheme != "https" or not parsed.hostname:
+            raise ValueError("expected an absolute HTTPS URL")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("download URLs must not contain credentials")
+        _ = parsed.port  # Reject malformed or out-of-range ports before making a request.
         path = urllib.parse.quote(
             parsed.path,
             safe="/%:@!$&'()*+,;=-._~",
@@ -402,10 +406,10 @@ class AuphonicClient:
         opener = urllib.request.build_opener(CrossOriginAuthStripper())
         partial = destination.with_name(f".{destination.name}.part")
         try:
-            request = urllib.request.Request(
-                _normalized_request_url(download_url),
-                headers={"Authorization": f"Bearer {self.api_key}"},
-            )
+            url = _normalized_request_url(download_url)
+            headers = ({"Authorization": f"Bearer {self.api_key}"}
+                       if _origin(url) == _origin(self.api_base) else {})
+            request = urllib.request.Request(url, headers=headers)
             with opener.open(request, timeout=self.timeout) as response:
                 raw_length = response.headers.get("Content-Length")
                 total = int(raw_length) if raw_length and raw_length.isdecimal() else None

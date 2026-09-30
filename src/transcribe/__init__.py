@@ -14,6 +14,11 @@ Library use::
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .auphonic import AuphonicClient
+    from .elevenlabs import ElevenLabsClient
 
 from . import levels, merge, second_pass
 from .package import (
@@ -45,14 +50,24 @@ __all__ = [
 ]
 
 
-def transcribe_file(source: str | Path, *options: str) -> Package:
+def transcribe_file(
+    source: str | Path, *options: str,
+    elevenlabs_api_key: str | None = None, auphonic_api_key: str | None = None,
+    elevenlabs_client: ElevenLabsClient | None = None,
+    auphonic_client: AuphonicClient | None = None,
+) -> Package:
     """Run the full pipeline on SOURCE and return the published package.
 
     OPTIONS are the command's own flags, for example ``"--output-dir", "/packages/hearing"`` or
     ``"--max-speakers", "4"``. Progress is suppressed; failures raise.
+    Per-provider keyword keys or clients override environment/.env lookup without
+    changing process state. Supplying both a key and client for one provider is refused.
     """
     from . import cli
 
     args = cli.parse_args([str(source), "--quiet", *options])
-    directory = cli.run_pipeline(args, announce=False)
+    directory = cli.run_pipeline(
+        args, announce=False, elevenlabs_api_key=elevenlabs_api_key,
+        auphonic_api_key=auphonic_api_key, elevenlabs_client=elevenlabs_client,
+        auphonic_client=auphonic_client)
     return Package.load(directory)
