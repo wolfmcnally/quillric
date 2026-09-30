@@ -1,6 +1,6 @@
 # Phase 1: Dependency-ready packages with a speaker table
 
-Status: implemented 2026-09-18; acceptance met (69 tests, offline rebuild, one live fixture run, clean-environment import). Not yet committed.
+Status: implemented 2026-09-18; acceptance met (69 tests, offline rebuild, one live fixture run, clean-environment import). Committed during private development; retained as historical implementation evidence.
 
 ## Outcome
 

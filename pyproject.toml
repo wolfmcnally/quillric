@@ -1,6 +1,6 @@
 [project]
 name = "quillric"
-version = "1.4.1"
+version = "0.1.0"
 description = "Audio or video to a self-contained, diarized transcription package with source identity and an assignable speaker table."
 readme = "README.md"
 requires-python = ">=3.9"

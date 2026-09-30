@@ -15,13 +15,20 @@ The distribution is named **`quillric`** (two Ls). The Python import remains
 output filenames are unchanged. The GitHub repository is
 [`wolfmcnally/quillric`](https://github.com/wolfmcnally/quillric).
 
-The core package has no third-party Python dependencies and runs on Python 3.9
-or newer on macOS/Unix. Normal transcription also needs `ffmpeg` on the path.
-Quillric is not published to PyPI yet; install a checkout or a reviewed release
-wheel rather than the unrelated PyPI package named `transcribe`:
+The core package has no third-party Python dependencies and runs on Python 3.9–3.14
+on Linux and macOS. Windows is not supported (the local locking code uses `fcntl`). Normal transcription also needs `ffmpeg` on the path.
+The first public release is **0.1.0**. Earlier 1.x versions were private development versions; existing transcript packages keep their recorded versions and schemas. Quillric is distributed through GitHub releases, not PyPI. Install the release wheel in a fresh environment:
 
 ```sh
-git clone https://github.com/wolfmcnally/quillric.git
+python3 -m venv .venv
+.venv/bin/python -m pip install https://github.com/wolfmcnally/quillric/releases/download/v0.1.0/quillric-0.1.0-py3-none-any.whl
+.venv/bin/transcribe --version
+```
+
+Install `ffmpeg` separately (`brew install ffmpeg` on macOS, or your Linux package manager). To add local duplicate detection, install NumPy in the same environment (`.venv/bin/python -m pip install 'numpy>=1.24'`). The release includes SHA-256 checksums for its wheel and source archive. A pinned source checkout is an alternative:
+
+```sh
+git clone --branch v0.1.0 https://github.com/wolfmcnally/quillric.git
 cd quillric
 python3 -m venv .venv
 .venv/bin/python -m pip install .
@@ -53,9 +60,16 @@ and continue to `import transcribe`; see [Library use](#library-use). Renaming t
 distribution does not satisfy a consumer requirement for distribution `transcribe`;
 requirements, source mappings and locks must be upgraded together.
 
-Provide `AUPHONIC_API_KEY` and `ELEVENLABS_API_KEY` in the environment or in a
-`.env` file in the current directory or project root. The command does not print
-either key.
+For normal transcription, create an ElevenLabs account with Scribe API access and set `ELEVENLABS_API_KEY`. Add an Auphonic account/key (`AUPHONIC_API_KEY`) only if leveling is selected. Use the environment or a private `.env` in your working directory; a source checkout also searches its root `.env`. Installed wheels do not search an arbitrary checkout. Never commit keys. The command does not print them.
+
+Start by reviewing a local dry run. To request exactly one paid transcription without Auphonic, use:
+
+```sh
+transcribe recording.mp3 --leveling off --second-pass off --dry-run
+transcribe recording.mp3 --leveling off --second-pass off
+```
+
+The second command uploads audio and can incur provider charges. The normal default `--second-pass auto` can upload and bill a second transcription for uneven recordings. There is no offline speech recognition backend. See [privacy and package trust](#privacy-and-package-trust) before uploading sensitive recordings.
 
 ## Use
 
@@ -377,6 +391,10 @@ acoustic codes. They have no built-in expiry or encryption. Local failure cleanu
 does not delete provider-side recordings or productions; retention and deletion
 at each provider remain the user's responsibility.
 
+Review the providers' current policies and your account settings: [ElevenLabs privacy policy](https://elevenlabs.io/privacy-policy) and [Auphonic privacy policy](https://auphonic.com/privacy). Do not assume that deleting a local package deletes uploaded audio, that a production's expiry deletes all retained excerpts, or that a provider account has zero retention. Quillric does not request zero-retention mode, disable provider training settings, or issue deletion requests. Provider terms, regions and account agreements control that handling.
+
+Back up or remove local packages and fingerprint caches according to your own retention policy. Output inherits ordinary filesystem permissions; use a private directory and restrictive umask for sensitive material. Progress and errors can reveal paths, filenames or provider messages. Quillric has no telemetry endpoint. Its configured cloud calls are ElevenLabs transcription and optional Auphonic processing/downloads.
+
 A loaded package must use flat filenames. Absolute paths, traversal, and symlinks
 that resolve outside the package are refused for the sidecar, source and every
 referenced file. Paths are checked again for later reads and speaker updates;
@@ -388,6 +406,7 @@ process replacing filesystem entries concurrently between validation and I/O.
 ## Test
 
 ```sh
+python3 -m pip install '.[fingerprint]'
 python3 -m unittest discover -s tests -v
 ```
 
@@ -398,6 +417,8 @@ failure cleanup, a mocked full pipeline, the package sidecar and its hashes, the
 speaker table, one name covering several identities, refusal of unknown
 identities and of altered evidence, and re-rendering after names change.
 
+CI runs the complete offline suite on Linux/macOS and Python 3.9–3.14 with ffmpeg and NumPy installed, then builds and checks wheel/source archives and performs an installed-wheel smoke test. Synthetic audio and fake/local HTTP clients are used; the suite needs no provider credentials or paid calls. A skip is a CI failure. Release publication requires green CI on the exact tagged commit.
+
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. See [`LICENSE`](LICENSE). NumPy is an optional external dependency; ffmpeg is installed separately and is not bundled. Each retains its own license. The cited fingerprinting research describes the algorithm's provenance; it is not a patent-clearance claim. Research/design documents describe proposals or historical experiments where stated; they do not promise implemented functionality.

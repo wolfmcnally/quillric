@@ -1,6 +1,6 @@
 # Phase 2: Retry requests the provider refuses with HTTP 429
 
-Status: implemented 2026-09-27; acceptance met (101 tests; the retry removed, both new tests fail). Not yet committed.
+Status: implemented 2026-09-27; acceptance met (101 tests; the retry removed, both new tests fail). Committed during private development; retained as historical implementation evidence.
 
 ## Outcome
 
