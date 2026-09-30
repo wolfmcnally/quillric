@@ -82,7 +82,8 @@ def align_speakers(
     best_score = -1.0
     best_mapping: dict[str, str] = {}
     for permutation in itertools.permutations(reference_ids):
-        mapping = dict(zip(candidate_ids, permutation, strict=True))
+        # Both sequences have the validated count; zip(strict=) requires Python 3.10.
+        mapping = dict(zip(candidate_ids, permutation))
         score = sum(
             sequence_similarity(candidate[candidate_id], reference[reference_id])
             for candidate_id, reference_id in mapping.items()
