@@ -22,7 +22,11 @@ with zipfile.ZipFile(wheel) as z:
     wheel_files = {n: z.read(n) for n in names}
     metadata = email.message_from_bytes(z.read("quillric-0.1.0.dist-info/METADATA"))
     assert metadata["Name"] == "quillric" and metadata["Version"] == "0.1.0"
-    assert metadata["Requires-Python"] == ">=3.9"
+    assert metadata["Requires-Python"] == ">=3.11"
+    requirements = metadata.get_all("Requires-Dist", [])
+    assert any(r.startswith("conric@ git+https://github.com/wolfmcnally/conric.git@ed9286297e92b8c049f70eb15a3b5556ed107ff0")
+               or r.startswith("conric @ git+https://github.com/wolfmcnally/conric.git@ed9286297e92b8c049f70eb15a3b5556ed107ff0")
+               for r in requirements), requirements
     assert b"transcribe = transcribe.cli:main" in z.read("quillric-0.1.0.dist-info/entry_points.txt")
     assert "transcribe/leveling-only.json" in wheel_files
     assert any(n.endswith("LICENSE") for n in wheel_files)
@@ -44,6 +48,8 @@ with tarfile.open(sdist) as t, tempfile.TemporaryDirectory() as tmp:
     assert (source / "LICENSE").is_file()
     metadata = email.message_from_bytes((source / "PKG-INFO").read_bytes())
     assert metadata["Name"] == "quillric" and metadata["Version"] == "0.1.0"
+    assert metadata["Requires-Python"] == ">=3.11"
+    assert metadata.get_all("Requires-Dist", []) == requirements
     subprocess.run([sys.executable, "-m", "build", "--wheel", "--no-isolation", "--outdir", str(Path(tmp) / "rebuilt"), str(source)], check=True)
     with zipfile.ZipFile(Path(tmp) / "rebuilt" / wheel.name) as z:
         assert wheel_files == {n: z.read(n) for n in z.namelist()}, "sdist and checkout wheels differ"

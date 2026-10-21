@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from . import auphonic, elevenlabs, levels
+from .config import ConfigurationError, load_settings
 from .second_pass import compare as compare_passes
 from .package import write_package_files
 from .render import (  # noqa: F401  (re-exported for callers of this module)
@@ -200,7 +201,14 @@ def resolved_settings(args: argparse.Namespace) -> tuple[dict[str, Any], float |
     overrides = list(args.auphonic_set)
     if args.speech_leveler_strength is not None:
         overrides.append(f"levelerstrength_speech={args.speech_leveler_strength}")
-    algorithms = auphonic.resolve_algorithms(config_path, False, overrides)
+    configured_algorithms = getattr(args, "_config_algorithms", None)
+    if configured_algorithms is None:
+        algorithms = auphonic.resolve_algorithms(config_path, False, overrides)
+    else:
+        algorithms = {**auphonic.ALL_PROCESSING_OFF, **dict(configured_algorithms)}
+        for override in overrides:
+            key, value = auphonic._parse_override(override)
+            algorithms[key] = value
     threshold = (
         None
         if args.max_speakers is not None
@@ -652,6 +660,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("input_file", type=Path)
+    parser.add_argument("--config", type=Path, action="append", default=[],
+                        help="explicit YAML settings file; repeat for ordered overlays")
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument(
         "--progress",
@@ -755,7 +765,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     parser.add_argument("--poll-interval", type=float, default=10.0, help=argparse.SUPPRESS)
     parser.add_argument("--wait-timeout", type=float, default=7200.0, help=argparse.SUPPRESS)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not args.config:
+        return args
+    settings = load_settings(args.config)
+    configurable = {"leveling", "second_pass", "uneven_threshold", "mp3_bitrate", "model",
+                    "language_code", "max_speakers", "diarization_threshold", "audio_events",
+                    "clean_transcript", "speaker_library", "speaker_roles"}
+    # Let argparse identify explicitly supplied options (including aliases and --option=value).
+    # Suppressing only these defaults avoids mistaking a built-in default for a CLI override.
+    defaults = [(action, action.default) for action in parser._actions
+                if action.dest in configurable]
+    try:
+        for action, _ in defaults:
+            action.default = argparse.SUPPRESS
+        explicit = vars(parser.parse_args(argv))
+    finally:
+        for action, default in defaults:
+            action.default = default
+    for destination, value in settings.overrides:
+        setattr(args, destination, value)
+    if "max_speakers" in explicit:
+        args.diarization_threshold = None
+    elif "diarization_threshold" in explicit:
+        args.max_speakers = None
+    for destination in configurable.intersection(explicit):
+        setattr(args, destination, explicit[destination])
+    if settings.algorithms is not None and args.auphonic_config is not None:
+        raise ConfigurationError("YAML cleanup.algorithms and --auphonic-config are mutually exclusive")
+    args._config_algorithms = settings.algorithms
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -771,7 +810,7 @@ def main(argv: list[str] | None = None) -> int:
         return fingerprint_cli.main(arguments[1:])
     try:
         run_pipeline(parse_args(arguments))
-    except (PipelineError, auphonic.AuphonicError, elevenlabs.TranscriptionError, levels.LevelsError, OSError) as error:
+    except (ConfigurationError, PipelineError, auphonic.AuphonicError, elevenlabs.TranscriptionError, levels.LevelsError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

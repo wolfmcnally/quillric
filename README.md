@@ -15,8 +15,7 @@ The distribution is named **`quillric`** (two Ls). The Python import remains
 output filenames are unchanged. The GitHub repository is
 [`wolfmcnally/quillric`](https://github.com/wolfmcnally/quillric).
 
-The core package has no third-party Python dependencies and runs on Python 3.9–3.14
-on Linux and macOS. Windows is not supported (the local locking code uses `fcntl`). Normal transcription also needs `ffmpeg` on the path.
+The current source requires Python 3.11 or later on Linux and macOS; Python 3.9 and 3.10 are no longer supported by this source. This configuration change is unreleased; existing release artifacts retain their original metadata and behavior. Conric 0.1.0 is pinned to its public Git revision for explicit YAML configuration; Conric depends on PyYAML. Installing the current source therefore needs Git and access to that public source. Windows is not supported (the local locking code uses `fcntl`). Normal transcription also needs `ffmpeg` on the path.
 The first public release is **0.1.0**. Earlier 1.x versions were private development versions; existing transcript packages keep their recorded versions and schemas. Quillric is distributed through GitHub releases, not PyPI. Install the release wheel in a fresh environment:
 
 ```sh
@@ -232,6 +231,45 @@ matches = fingerprint.find_matches(prints)
 groups = fingerprint.duplicate_groups(prints, matches)
 ```
 
+## Explicit configuration
+
+Pass `--config settings.yaml` to load YAML settings, or repeat it for ordered overlays. No configuration file is discovered automatically. Included bases load first, later files override earlier files, and explicitly supplied CLI flags override YAML. Built-in defaults apply to omitted settings. Includes and all explicit files must resolve within the first file's parent directory; use a common configuration directory for overlays. Conric rejects unsafe YAML, duplicate keys and unknown configuration fields before any output or provider activity.
+
+```yaml
+transcription:
+  provider: elevenlabs
+  model: scribe_v2
+  language: null
+  diarization:
+    threshold: 0.22
+  audio_events: false
+  clean_transcript: false
+  speaker_library: false
+  speaker_roles: false
+cleanup:
+  provider: auphonic
+  mode: off
+  bitrate_kbps: 128
+second_pass:
+  mode: off
+uneven_threshold_db: 12
+```
+
+```sh
+transcribe recording.mp3 --config settings.yaml --dry-run
+transcribe recording.mp3 --config settings.yaml --config overlay.yaml --model scribe_v2
+```
+
+Provider fields are optional and accept only the identities shown. Mode fields accept `off`, `auto` or `on`. `language: null` selects automatic detection. Diarization accepts either `threshold` (0.1–0.4) or `max_speakers` (1–32); an explicit CLI selection replaces the YAML alternative. `speaker_roles: true` is compatible with an omitted speaker count or a count of two. Bitrate is an integer from 32–320; the unevenness threshold must be a finite nonnegative number. Boolean fields require YAML `true` or `false`. Existing CLI boolean switches enable their setting; use YAML `false` to disable it.
+
+The composed YAML must pass schema validation before CLI overrides are applied. For example, an invalid YAML combination of speaker roles and three speakers must be corrected in the file; `--max-speakers 2` does not repair an invalid document. The final combined settings also pass the existing pipeline validation before writes or provider activity.
+
+Optional `cleanup.algorithms` is a mapping of the existing Auphonic algorithm names to values of the same type as their defaults. It starts from the all-off baseline, including when it is empty. `--auphonic-set` and `--speech-leveler-strength` override those values. YAML algorithms and `--auphonic-config` are mutually exclusive; the latter remains the existing JSON algorithm-file option. Without YAML algorithms, existing JSON/default algorithm behavior is unchanged.
+
+Configuration cannot set credentials, endpoints, fallback providers, output paths, overwrite permission or resume actions. Credentials still use the existing per-call key/client arguments or the environment/`.env` loaders, and are resolved only for needed providers. Dry-run loads no credentials and makes no provider calls. A caller passing existing pipeline options without `--config` keeps control of the invocation; an unrelated YAML file in the working directory has no effect.
+
+Library calls may pass `"--config", str(path)` among the existing options. A composing application can reuse `transcribe.config.validate_config` with `document.validate(validate_config, path=("audio",))` at its own Conric subtree; it returns immutable `Settings` overrides without invoking a provider or resolving credentials. Conric's `source(path)` identifies winning-value provenance. Schema diagnostics omit scalar values; ordinary configuration strings are not secrets and are not automatically redacted. Keep credentials outside these documents.
+
 ## Library use
 
 ```python
@@ -417,8 +455,8 @@ failure cleanup, a mocked full pipeline, the package sidecar and its hashes, the
 speaker table, one name covering several identities, refusal of unknown
 identities and of altered evidence, and re-rendering after names change.
 
-CI runs the complete offline suite on Linux/macOS and Python 3.9–3.14 with ffmpeg and NumPy installed, then builds and checks wheel/source archives and performs an installed-wheel smoke test. Synthetic audio and fake/local HTTP clients are used; the suite needs no provider credentials or paid calls. A skip is a CI failure. Release publication requires green CI on the exact tagged commit.
+CI is configured to run the complete offline suite on Linux/macOS and Python 3.11–3.14 with ffmpeg and NumPy installed, then build and check wheel/source archives and perform an installed-wheel smoke test. Synthetic audio and fake/local HTTP clients are used; the suite needs no provider credentials or paid calls. A skip is a CI failure. Release publication requires green CI on the exact tagged commit.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE). NumPy is an optional external dependency; ffmpeg is installed separately and is not bundled. Each retains its own license. The cited fingerprinting research describes the algorithm's provenance; it is not a patent-clearance claim. Research/design documents describe proposals or historical experiments where stated; they do not promise implemented functionality.
+MIT. See [`LICENSE`](LICENSE). Conric and PyYAML are external runtime dependencies under their own MIT licenses. NumPy is an optional external dependency; ffmpeg is installed separately and is not bundled. Each retains its own license. The cited fingerprinting research describes the algorithm's provenance; it is not a patent-clearance claim. Research/design documents describe proposals or historical experiments where stated; they do not promise implemented functionality.

@@ -12,14 +12,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
-        # setup-python has no Python 3.9 build for Ubuntu 26.04.
-        exclude:
-          - os: ubuntu-latest
-            python: '3.9'
-        include:
-          - os: ubuntu-24.04
-            python: '3.9'
+        python: ['3.11', '3.12', '3.13', '3.14']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -44,7 +37,7 @@ jobs:
         run: |
           python .github/scripts/verify_dist.py
           python -m venv /tmp/quillric-wheel
-          /tmp/quillric-wheel/bin/python -m pip install --no-deps dist/*.whl
+          /tmp/quillric-wheel/bin/python -m pip install dist/*.whl
           cd /tmp
           /tmp/quillric-wheel/bin/transcribe --version
           /tmp/quillric-wheel/bin/python -c 'import importlib.metadata as m, transcribe; from transcribe.cli import VERSION; assert m.version("quillric") == VERSION == "0.1.0"; assert not any(d.metadata["Name"].lower() == "transcribe" for d in m.distributions()); assert callable(transcribe.transcribe_file)'
