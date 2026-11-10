@@ -1,6 +1,6 @@
 # Agent instructions
 
-These instructions apply to coding agents working in Quillric. `AGENTS.md` points to this file so Claude Code and Codex use the same guidance.
+These instructions apply to coding agents working in Quillric. `AGENTS.md` directs agents to this canonical file so Claude Code and Codex use the same guidance.
 
 ## Commit and push authority
 
