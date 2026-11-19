@@ -158,7 +158,8 @@ class RetryTests(unittest.TestCase):
         return f"http://127.0.0.1:{server.server_address[1]}", received
 
     def _client(self, base: str, waits: list[float]):
-        return transcribe.ElevenLabsClient("test-key", api_base=base, retry_delays=(1.0, 2.0), sleep=waits.append)
+        return transcribe.ElevenLabsClient("test-key", api_base=base, retry_delays=(1.0, 2.0),
+                                          sleep=waits.append, allow_insecure_local_http=True)
 
     def _audio(self) -> Path:
         directory = Path(tempfile.mkdtemp())

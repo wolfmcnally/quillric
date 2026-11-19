@@ -55,6 +55,8 @@ def render_frontmatter(
     clean_transcript: bool,
     speaker_library: bool,
     speaker_roles: bool,
+    transcription_provider: str = "elevenlabs",
+    diarization_provider: str = "vendor",
     source_sha256: str | None = None,
     generated_at: str | None = None,
     leveling: dict[str, Any] | None = None,
@@ -98,7 +100,11 @@ def render_frontmatter(
                 f"  uneven_threshold_db: {yaml_scalar(leveling.get('uneven_threshold_db'))}",
             ]
         )
-    if production_id is None:
+    if (leveling or {}).get("provider") == "ffmpeg" and leveling.get("applied"):
+        lines.extend(["preprocessing:", '  provider: "ffmpeg"',
+                      f"  algorithm: {yaml_scalar(leveling.get('algorithm'))}",
+                      '  output_format: "mp3"', f"  output_bitrate_kbps: {mp3_bitrate}"])
+    elif production_id is None:
         lines.append("preprocessing: null")
     else:
         lines.extend(
@@ -114,20 +120,21 @@ def render_frontmatter(
         for key in sorted(algorithms):
             lines.append(f"    {key}: {yaml_scalar(algorithms[key])}")
     if second_pass is not None:
-        lines.extend(
-            [
-                "second_pass:",
-                f"  agreement: {yaml_scalar(second_pass.get('agreement'))}",
-                f"  differences: {len(second_pass.get('differences', []))}",
-            ]
-        )
+        lines.append("second_pass:")
+        if second_pass.get("independent") is False:
+            lines.extend(["  independent: false", f"  reason: {yaml_scalar(second_pass.get('reason'))}"])
+        else:
+            lines.extend([f"  agreement: {yaml_scalar(second_pass.get('agreement'))}",
+                          f"  differences: {len(second_pass.get('differences', []))}"])
     lines.extend(
         [
             "speech_to_text:",
-            "  provider: \"ElevenLabs\"",
+            f"  provider: {yaml_scalar('ElevenLabs' if transcription_provider == 'elevenlabs' else transcription_provider)}",
             f"  model: {yaml_scalar(model_id)}",
             f"  requested_language: {yaml_scalar(language_code or 'auto')}",
-            "  diarization: true",
+            f"  diarization: {yaml_scalar(diarization_provider != 'off')}",
+            *([] if diarization_provider == "vendor" else
+              [f"  diarization_provider: {yaml_scalar(diarization_provider)}"]),
             f"  diarization_threshold: {yaml_scalar(diarization_threshold)}",
             f"  max_speakers: {yaml_scalar(max_speakers)}",
             "  timestamp_granularity: \"word\"",
@@ -201,6 +208,8 @@ def render_transcript_markdown(
         lines.extend(["## Transcript", ""])
         if second_transcript is not None:
             lines.extend(render_disagreement_note(merge.summary(turns)))
+        elif (frontmatter.get("second_pass") or {}).get("independent") is False:
+            lines.extend(["The second pass was skipped because it would repeat the same deterministic configuration.", ""])
     for turn in turns:
         text = str(turn.get("text") or "").strip()
         if not text:

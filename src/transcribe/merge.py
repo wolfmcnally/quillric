@@ -16,12 +16,12 @@ alternative the second pass; nothing is invented and nothing is dropped.
 from __future__ import annotations
 
 import bisect
-import re
 from collections import Counter
 from difflib import SequenceMatcher
 from typing import Any
 
-_TOKEN = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?")
+from .second_pass import normalized_tokens
+
 NOTHING = "—"
 UNASSIGNED = "unassigned"
 SECOND_PREFIX = "second:"
@@ -35,7 +35,7 @@ def _words(transcript: dict[str, Any]) -> list[dict[str, Any]]:
             text = str(word["text"]).strip()
             out.append({
                 "text": text,
-                "key": " ".join(_TOKEN.findall(text.lower())),
+                "key": " ".join(normalized_tokens(text)) or text,
                 "start": word.get("start"),
                 "end": word.get("end"),
                 "speaker": str(word.get("speaker_id") or UNASSIGNED),

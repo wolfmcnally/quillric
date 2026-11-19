@@ -5,10 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
+from contextlib import ExitStack
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from . import fingerprint as fp
+from . import fingerprint as fp, media
+from .config import ConfigurationError, load_settings
+from .providers import ProviderError, work_environment
 
 AUDIO_SUFFIXES = frozenset({".mp3", ".m4a", ".wav", ".aac", ".ogg", ".opus", ".flac", ".wma", ".amr", ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".3gp", ".aiff", ".aif"})
 
@@ -16,9 +20,11 @@ AUDIO_SUFFIXES = frozenset({".mp3", ".m4a", ".wav", ".aac", ".ogg", ".opus", ".f
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="transcribe duplicates", description=__doc__)
     parser.add_argument("paths", nargs="+", type=Path, help="recordings, or directories searched recursively")
+    parser.add_argument("--config", action="append", type=Path, default=[], help="explicit YAML settings")
     parser.add_argument("--cache", type=Path, help="directory that keeps fingerprints between runs")
-    parser.add_argument("--workers", type=int, default=4, help="files decoded at once")
-    parser.add_argument("--json", action="store_true", help="print the full report as JSON")
+    parser.add_argument("--workers", type=int, help="files decoded at once")
+    parser.add_argument("--json", action=argparse.BooleanOptionalAction, default=None,
+                        help="print the full report as JSON")
     return parser.parse_args(argv)
 
 
@@ -32,16 +38,18 @@ def collect(paths: list[Path]) -> list[Path]:
     return found
 
 
-def _one(job: tuple[str, str | None]) -> tuple[str, dict | None, str | None]:
-    path, cache = job
+def _one(job) -> tuple[str, dict | None, str | None]:
+    path, cache, executable, env = job
     try:
-        return path, fp.load_or_compute(Path(path), Path(cache) if cache else None).to_json(), None
+        return path, fp.load_or_compute(Path(path), Path(cache) if cache else None,
+                                        executable=executable, env=env).to_json(), None
     except (fp.FingerprintError, OSError) as error:
         return path, None, str(error)
 
 
-def report(paths: list[Path], cache: Path | None, workers: int) -> dict:
-    jobs = [(str(path), str(cache) if cache else None) for path in paths]
+def report(paths: list[Path], cache: Path | None, workers: int, *,
+           executable: str | None = None, env: dict[str, str] | None = None) -> dict:
+    jobs = [(str(path), str(cache) if cache else None, executable, env) for path in paths]
     prints, failures = [], {}
     with ProcessPoolExecutor(max(1, workers)) as pool:
         for path, data, error in pool.map(_one, jobs, chunksize=4):
@@ -72,11 +80,28 @@ def report(paths: list[Path], cache: Path | None, workers: int) -> dict:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        result = report(collect(args.paths), args.cache, args.workers)
-    except fp.FingerprintError as error:
+        with ExitStack() as stack:
+            tool, env = None, None
+            configured = {}
+            if args.config:
+                settings = load_settings(args.config)
+                configured = dict(settings.duplicates)
+                tool = media.executable("ffmpeg", settings.ffmpeg, settings.executable_path, explicit=True)
+                paths = dict(settings.overrides)
+                work_parent = paths.get("work_dir") or paths.get("staging_dir")
+                env = {}
+                if work_parent is not None:
+                    work_parent.mkdir(parents=True, exist_ok=True)
+                    work = Path(stack.enter_context(tempfile.TemporaryDirectory(dir=work_parent)))
+                    env = work_environment(work, settings.executable_path)
+            cache = args.cache if args.cache is not None else configured.get("cache")
+            workers = args.workers if args.workers is not None else configured.get("workers", 4)
+            json_output = args.json if args.json is not None else configured.get("json", False)
+            result = report(collect(args.paths), cache, workers, executable=tool, env=env)
+    except (ConfigurationError, ProviderError, fp.FingerprintError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
-    if args.json:
+    if json_output:
         print(json.dumps(result, indent=2))
         return 0
     print(f"{result['fingerprinted']} of {result['files']} files fingerprinted; {result['unique_recordings']} unique recordings, {result['unique_hours']} of {result['total_hours']} hours")

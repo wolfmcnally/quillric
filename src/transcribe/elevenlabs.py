@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import http.client
+import ipaddress
 import json
 import mimetypes
 import os
@@ -19,6 +20,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+if __package__:
+    from . import http_settings
+else:
+    import http_settings
+
+
 API_BASE = "https://api.elevenlabs.io"
 # Waits before retrying a request the provider refused with HTTP 429 (a rate or concurrency limit). The
 # provider's error guidance asks for exponential backoff; the refused request did no transcription.
@@ -27,6 +34,23 @@ RETRY_DELAYS_SECONDS = (15.0, 30.0, 60.0, 120.0)
 
 class TranscriptionError(RuntimeError):
     """A safe-to-display transcription error."""
+
+
+def validate_api_base(url: str, allow_insecure_local_http: bool = False) -> urllib.parse.SplitResult:
+    try:
+        parsed = urllib.parse.urlsplit(url)
+        parsed.port  # validate the explicit port, if any
+        if (not parsed.hostname or parsed.username is not None or parsed.password is not None
+                or parsed.query or parsed.fragment or any(ch.isspace() for ch in url)):
+            raise ValueError
+        if parsed.scheme == "https":
+            return parsed
+        if (parsed.scheme == "http" and allow_insecure_local_http
+                and ipaddress.ip_address(parsed.hostname).is_loopback):
+            return parsed
+    except ValueError:
+        pass
+    raise TranscriptionError("invalid ElevenLabs API base; HTTPS is required")
 
 
 def _parse_dotenv_value(raw_value: str) -> str:
@@ -79,10 +103,11 @@ def transcription_fields(
     no_verbatim: bool = False,
     use_speaker_library: bool = False,
     detect_speaker_roles: bool = False,
+    diarize: bool = True,
 ) -> dict[str, str]:
     fields = {
         "model_id": model_id,
-        "diarize": "true",
+        "diarize": str(diarize).lower(),
         "tag_audio_events": str(tag_audio_events).lower(),
         "timestamps_granularity": "word",
         "no_verbatim": str(no_verbatim).lower(),
@@ -109,9 +134,16 @@ class ElevenLabsClient:
         *,
         retry_delays: tuple[float, ...] = RETRY_DELAYS_SECONDS,
         sleep: Callable[[float], None] | None = None,
+        allow_insecure_local_http: bool = False,
+        explicit: bool = False,
+        ca_file: Path | None = None,
     ):
+        validate_api_base(api_base, allow_insecure_local_http)
         self.api_key = api_key
         self.api_base = api_base.rstrip("/")
+        self.allow_insecure_local_http = allow_insecure_local_http
+        self.explicit = explicit
+        self.ca_file = ca_file
         self.timeout = timeout
         self.retry_delays = tuple(retry_delays)
         self.sleep = sleep if sleep is not None else time.sleep
@@ -130,10 +162,9 @@ class ElevenLabsClient:
         use_speaker_library: bool = False,
         detect_speaker_roles: bool = False,
         progress: Callable[[int, int | None], None] | None = None,
+        diarize: bool = True,
     ) -> dict[str, Any]:
-        parsed = urllib.parse.urlsplit(self.api_base)
-        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-            raise TranscriptionError(f"Unsupported API base URL: {self.api_base}")
+        parsed = validate_api_base(self.api_base, self.allow_insecure_local_http)
 
         boundary = f"----elevenlabs-{uuid.uuid4().hex}"
         fields = transcription_fields(
@@ -145,12 +176,14 @@ class ElevenLabsClient:
             no_verbatim=no_verbatim,
             use_speaker_library=use_speaker_library,
             detect_speaker_roles=detect_speaker_roles,
+            diarize=diarize,
         )
         field_body = b"".join(
             _form_field(boundary, name, value) for name, value in fields.items()
         )
         safe_name = audio_path.name.replace('"', "_").replace("\r", "_").replace("\n", "_")
-        media_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+        media_type = (http_settings.media_type(safe_name) if self.explicit else
+                      mimetypes.guess_type(safe_name)[0] or "application/octet-stream")
         file_header = (
             f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
@@ -178,7 +211,8 @@ class ElevenLabsClient:
                 parsed.hostname,
                 port=parsed.port,
                 timeout=self.timeout,
-                context=ssl.create_default_context(),
+                context=(http_settings.tls_context(self.ca_file) if self.explicit else
+                         ssl.create_default_context()),
             )
         return http.client.HTTPConnection(parsed.hostname, port=parsed.port, timeout=self.timeout)
 

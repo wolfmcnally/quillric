@@ -118,7 +118,7 @@ class ConfigurationTests(unittest.TestCase):
             "cleanup: {mode: never}", "cleanup: {bitrate_kbps: 31}",
             "cleanup: {bitrate_kbps: 128.0}", "cleanup: {algorithms: {leveler: 1}}",
             "cleanup: {algorithms: {unsupported: true}}", "second_pass: {mode: false}",
-            "uneven_threshold_db: -1", "local_only: false",
+            "uneven_threshold_db: -1", "local_only: 'false'",
         ]
         for text in invalid:
             with self.subTest(text=text), self.assertRaises(ConfigurationError):
@@ -179,7 +179,7 @@ class ConfigurationTests(unittest.TestCase):
               patch.object(cli.elevenlabs, "ElevenLabsClient", return_value=client) as constructor):
             package = transcribe.transcribe_file(self.source, "--config", str(file),
                                                  elevenlabs_api_key="synthetic-secret-key")
-        constructor.assert_called_once_with("synthetic-secret-key")
+        constructor.assert_called_once_with("synthetic-secret-key", explicit=True, ca_file=None)
         self.assertNotIn("synthetic-secret-key", json.dumps(package.sidecar))
 
     def test_final_cli_yaml_combination_is_validated_before_writes_or_clients(self):

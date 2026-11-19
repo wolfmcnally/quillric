@@ -6,6 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from .config import ConfigurationError, load_settings
 from .package import Package, PackageError
 
 
@@ -18,8 +19,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         metavar="ID=NAME",
         help="give NAME to speaker identity ID; the same NAME may be given to several identities",
     )
-    parser.add_argument("--note", action="append", default=[], metavar="ID=TEXT", help="set a note")
-    parser.add_argument("--clear", action="append", default=[], metavar="ID", help="remove a name")
+    parser.add_argument("--config", action="append", type=Path, default=[])
+    parser.add_argument("--note", action="append", default=None, metavar="ID=TEXT", help="set a note")
+    parser.add_argument("--clear", action="append", default=None, metavar="ID", help="remove a name")
     return parser.parse_args(argv)
 
 
@@ -44,14 +46,15 @@ def print_table(package: Package) -> None:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        configured = dict(load_settings(args.config).speakers) if args.config else {}
         package = Package.load(args.package)
-        names = _pairs(args.assignments, "an assignment")
-        names.update({identity: None for identity in args.clear})
-        notes = _pairs(args.note, "a note")
+        names = _pairs(args.assignments or configured.get("assignments", ()), "an assignment")
+        names.update({identity: None for identity in (args.clear or configured.get("clear", ()))})
+        notes = _pairs(args.note or configured.get("note", ()), "a note")
         if names or notes:
             package.assign(names, notes)
         print_table(package)
-    except (PackageError, OSError, ValueError) as error:
+    except (ConfigurationError, PackageError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     return 0

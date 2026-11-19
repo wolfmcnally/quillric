@@ -68,7 +68,7 @@ transcribe recording.mp3 --leveling off --second-pass off --dry-run
 transcribe recording.mp3 --leveling off --second-pass off
 ```
 
-The second command uploads audio and can incur provider charges. The normal default `--second-pass auto` can upload and bill a second transcription for uneven recordings. There is no offline speech recognition backend. See [privacy and package trust](#privacy-and-package-trust) before uploading sensitive recordings.
+The second command uploads audio and can incur provider charges. The normal default `--second-pass auto` can upload and bill a second transcription for uneven recordings. An explicitly configured command can do speech recognition offline using separately installed local software and weights. See [explicit configuration](#explicit-configuration) for that setup and [privacy and package trust](#privacy-and-package-trust) before uploading sensitive recordings.
 
 ## Use
 
@@ -260,15 +260,74 @@ transcribe recording.mp3 --config settings.yaml --dry-run
 transcribe recording.mp3 --config settings.yaml --config overlay.yaml --model scribe_v2
 ```
 
-Provider fields are optional and accept only the identities shown. Mode fields accept `off`, `auto` or `on`. `language: null` selects automatic detection. Diarization accepts either `threshold` (0.1–0.4) or `max_speakers` (1–32); an explicit CLI selection replaces the YAML alternative. `speaker_roles: true` is compatible with an omitted speaker count or a count of two. Bitrate is an integer from 32–320; the unevenness threshold must be a finite nonnegative number. Boolean fields require YAML `true` or `false`. Existing CLI boolean switches enable their setting; use YAML `false` to disable it.
+Provider fields are optional. Transcription accepts `elevenlabs` or `command`, diarization accepts `vendor`, `command` or `off`, and leveling accepts `auphonic`, `ffmpeg` or `off`. Mode fields accept `off`, `auto` or `on`. `language: null` selects automatic detection. Diarization accepts either `threshold` (0.1–0.4) or `max_speakers` (1–32); an explicit CLI selection replaces the YAML alternative. `speaker_roles: true` is compatible with an omitted speaker count or a count of two. Bitrate is an integer from 32–320; the unevenness threshold must be a finite nonnegative number. Boolean fields require YAML `true` or `false`. Existing CLI boolean switches enable their setting; use YAML `false` to disable it.
 
 The composed YAML must pass schema validation before CLI overrides are applied. For example, an invalid YAML combination of speaker roles and three speakers must be corrected in the file; `--max-speakers 2` does not repair an invalid document. The final combined settings also pass the existing pipeline validation before writes or provider activity.
 
 Optional `cleanup.algorithms` is a mapping of the existing Auphonic algorithm names to values of the same type as their defaults. It starts from the all-off baseline, including when it is empty. `--auphonic-set` and `--speech-leveler-strength` override those values. YAML algorithms and `--auphonic-config` are mutually exclusive; the latter remains the existing JSON algorithm-file option. Without YAML algorithms, existing JSON/default algorithm behavior is unchanged.
 
-Configuration cannot set credentials, endpoints, fallback providers, output paths, overwrite permission or resume actions. Credentials still use the existing per-call key/client arguments or the environment/`.env` loaders, and are resolved only for needed providers. Dry-run loads no credentials and makes no provider calls. A caller passing existing pipeline options without `--config` keeps control of the invocation; an unrelated YAML file in the working directory has no effect.
+Explicit configuration accepts vendor `api_key: !env VARIABLE_NAME`, `api_base` and an absolute `ca_file` for TLS trust. Keys resolve only when a provider is needed. Use the per-call key/client arguments to override a secret reference. Standalone calls without settings retain their legacy environment and `.env` lookup. Explicit mode disables ambient credential and proxy discovery. TLS uses the platform trust store unless an explicit CA bundle is supplied. Dry-run loads no credentials and makes no provider calls. An unrelated YAML file in the working directory has no effect.
 
-Library calls may pass `"--config", str(path)` among the existing options. A composing application can reuse `transcribe.config.validate_config` with `document.validate(validate_config, path=("audio",))` at its own Conric subtree; it returns immutable `Settings` overrides without invoking a provider or resolving credentials. Conric's `source(path)` identifies winning-value provenance. Schema diagnostics omit scalar values; ordinary configuration strings are not secrets and are not automatically redacted. Keep credentials outside these documents.
+`paths` accepts absolute `output_dir`, `staging_dir`, `work_dir`, `ffmpeg` and `ffprobe`, or a colon-separated `executable_path` of absolute directories for resolving media tools and helper subprocesses. Explicit media processing uses only these tool locations. `run` accepts `force`, `dry_run`, `quiet` and `progress`. `leveling` (also accepted under the legacy name `cleanup`) accepts `bitrate_kbps`. Auphonic accepts `poll_interval`, `wait_timeout`, `resume_production`, `algorithm_file`, `algorithm_overrides`, `speech_leveler_strength` and the existing `algorithms` mapping. The directory selected by `paths.work_dir` holds per-run scratch, home and cache locations. With separate staging and output filesystems, Quillric copies the finished package to the output filesystem before publishing it by rename. `transcribe duplicates --config FILE` accepts `duplicates.cache`, `duplicates.workers` and `duplicates.json`. `transcribe speakers --config FILE` accepts `speakers.assignments`, `speakers.note` and `speakers.clear` as lists of the corresponding CLI values.
+
+Use `leveling.mode: on` or `auto` with the `ffmpeg` provider to run the `dynaudnorm` adaptive gain filter and write an adjusted MP3. Leveling stays off by default. With explicit configuration, a video extension or configured probe triggers stream inspection. A video’s first audio stream is decoded to FLAC before transcription. Layouts with more than eight channels are downmixed to stereo. The package keeps the original recording, and standalone vendor runs continue to upload the original input or the selected leveling output. ElevenLabs requires HTTPS, with an explicit `allow_insecure_local_http: true` exception for fake endpoints on loopback IP literals.
+
+A local configuration can look like this:
+
+```yaml
+local_only: true
+paths:
+  output_dir: /workspace/output/recording
+  staging_dir: /workspace/staging
+  work_dir: /workspace/work
+  ffmpeg: /tools/ffmpeg
+  ffprobe: /tools/ffprobe
+transcription:
+  provider: command
+  model: pinned-model-id
+  command:
+    argv: [/tools/recognize]
+    egress: local
+    timeout_seconds: 900
+    max_concurrency: 1
+diarization:
+  provider: command
+  command:
+    argv: [/tools/diarize]
+    egress: local
+leveling:
+  provider: ffmpeg
+  mode: off
+second_pass:
+  mode: on
+  # model: second-pinned-model-id
+```
+
+The default command egress is `brokered`, which requires `allow_brokered: true`. Local-only mode refuses cloud and brokered providers. Declare `egress: local` only for a helper that can run offline. The host owns network and filesystem confinement. A failed provider ends the run. Command transcription refuses requests for audio events, `no_verbatim` or `clean_transcript`, speaker library and speaker roles. Speaker library and roles also require vendor diarization. A separate diarization helper returns speaker labels for the transcript’s timed words. Quillric keeps the helper assignments in a hash-verified `-diarization.json` file and preserves the raw transcript.
+
+Set `second_pass.provider`, `second_pass.model` or `second_pass.command` to configure an alternative when supported. Selecting ElevenLabs for the second pass requires ElevenLabs for the first pass, because both share the vendor settings in `transcription`. Command helpers default to deterministic. For the same deterministic command and model, Quillric records `independent: false` and skips the repeat. Distinct configurations and stochastic repeats record the observed comparison. The comparison is an index of differing readings and timings.
+
+The package sidecar remains `transcribe.package.v1`. It adds top-level `providers.transcription` and `providers.diarization`, plus `leveling.provider` and `leveling.algorithm`. When assignments were projected, `files.diarization` carries the filename and SHA-256 of the assignment artifact. A second-pass comparison includes its `provider`, `model`, and `basis`. When a deterministic repeat is skipped, `second_pass` records `independent: false` and a `reason`.
+
+### Command protocols
+
+Every request is one UTF-8 JSON document containing exactly `schema` and `body`. Every response is one UTF-8 JSON document with exactly `schema`, `status: "ok"` and `body`, or `schema`, `status: "error"` and `category`. Error categories are `throttled`, `refused`, `unavailable`, `invalid`, and `limit`. Write diagnostics to stderr. Quillric discards stderr and rejects duplicate keys, malformed responses, timeouts, output over 16 MiB, and nonzero exits. It launches the exact absolute executable without a shell, applies the concurrency limit to identical argv within the process, and terminates the child process group. Only names explicitly listed in `pass_env` pass through. An explicit executable search path and work-local `HOME`, `TMPDIR` and XDG variables are supplied by Quillric. Use absolute paths in helper argv for files it needs.
+
+| Stage | Schemas | Request body | Successful response body |
+| --- | --- | --- | --- |
+| Transcription | `quillric-transcription-request/1` and `quillric-transcription-response/1` | `audio_path` (absolute), `model`, `language_code` (nullable) | `words`, `language_code`, `audio_duration_secs` |
+| Diarization | `quillric-diarization-request/1` and `quillric-diarization-response/1` | `audio_path` (absolute), `words` with `ordinal`, `start`, `end`; nullable `max_speakers`, `threshold` | `assignments` with one numeric-string ordinal key per requested word and a speaker label or null |
+| ffmpeg leveling helper | `quillric-leveling-request/1` and `quillric-leveling-response/1` | Absolute `audio_path` and `output_path`, integer `bitrate_kbps` | `algorithm` and `bitrate_kbps` |
+
+Each transcription word has exactly `text`, `type`, `start`, `end`, `speaker_id`, and `logprob`. Use `word` for timed words and `spacing` for whitespace. Spacing may have null timings. Times are in seconds from the start of the audio and ordered by start time. A speaker ID or log probability may be null. Finite log probabilities must be at most zero. Helpers should return a nonempty language code and nonnegative duration. The leveling protocol is available as `transcribe leveling-helper --ffmpeg /tools/ffmpeg`. The built-in ffmpeg stage uses the same adapter.
+
+### Offline qualification
+
+Stage the Quillric, pinned Conric, PyYAML and optional NumPy wheels for the target Python and Linux aarch64 glibc ABI. Quillric’s distribution metadata retains the Conric source pin for standalone installation. Build Conric’s wheel from that exact revision and record the source revision and wheel hashes. Install locked dependency wheels first and install the Quillric wheel with `--no-deps --no-index`. Supply pinned `ffmpeg` and `ffprobe` binaries supporting `dynaudnorm` and the `libmp3lame` encoder. The macOS CI job installs the Homebrew ffmpeg formula, which supplies both binaries. Run `transcribe doctor --config FILE` to record their versions, build configuration and reported licenses. Audit the exact build and linked components before distributing binaries. FFmpeg’s base license is generally LGPL, with build flags and optional components affecting redistribution terms. Quillric ships neither binary.
+
+Run the complete test and wheel gates in a network-disabled Linux aarch64 glibc container. See [the phase plan](plan/03-configuration-selected-providers.md) for the outstanding candidate evaluation and qualification gates.
+
+Library calls may pass `"--config", str(path)` among the existing options. A composing application can reuse `transcribe.config.validate_config` with `document.validate(validate_config, path=("audio",))` at its own Conric subtree; it returns immutable `Settings` overrides without invoking a provider or resolving credentials. Pass that object to `transcribe_file(..., settings=settings)`. Conric's `source(path)` identifies winning-value provenance. Schema diagnostics omit scalar values; ordinary configuration strings are not secrets and are not automatically redacted. Keep credentials outside these documents.
 
 ## Library use
 

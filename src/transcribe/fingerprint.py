@@ -79,15 +79,16 @@ class Fingerprint:
         return cls(data["path"], float(data["seconds"]), codes, voiced)
 
 
-def decode(path: Path) -> Any:
+def decode(path: Path, *, executable: str | None = None,
+           env: dict[str, str] | None = None) -> Any:
     """The first audio stream as float samples at 5512 Hz mono. Video contributes its audio track only."""
     np = _numpy()
-    executable = shutil.which("ffmpeg")
+    executable = executable or shutil.which("ffmpeg")
     if executable is None:
         raise FingerprintError("ffmpeg is required to decode audio")
-    command = [executable, "-v", "error", "-nostdin", "-i", str(path), "-map", "0:a:0", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "s16le", "-"]
+    command = [executable, "-v", "error", "-nostdin", "-protocol_whitelist", "file,pipe", "-i", str(path), "-map", "0:a:0", "-ac", "1", "-ar", str(SAMPLE_RATE), "-f", "s16le", "-"]
     try:
-        result = subprocess.run(command, capture_output=True, check=True, timeout=3600)
+        result = subprocess.run(command, capture_output=True, check=True, timeout=3600, env=env)
     except subprocess.CalledProcessError as exc:
         raise FingerprintError(f"could not decode {Path(path).name}: {exc.stderr.decode(errors='replace').strip()[-200:]}") from exc
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -125,9 +126,10 @@ def codes_from_samples(samples: Any) -> tuple[Any, Any]:
     return codes, total > floor
 
 
-def fingerprint_file(path: Path | str) -> Fingerprint:
+def fingerprint_file(path: Path | str, *, executable: str | None = None,
+                     env: dict[str, str] | None = None) -> Fingerprint:
     path = Path(path)
-    samples = decode(path)
+    samples = decode(path, executable=executable, env=env)
     codes, voiced = codes_from_samples(samples)
     return Fingerprint(str(path), len(samples) / SAMPLE_RATE, codes, voiced)
 
@@ -265,19 +267,20 @@ def duplicate_groups(prints: Sequence[Fingerprint], matches: Iterable[Match]) ->
     return sorted((sorted(members) for members in groups.values() if len(members) > 1), key=lambda members: members[0])
 
 
-def load_or_compute(path: Path, cache_dir: Path | None) -> Fingerprint:
+def load_or_compute(path: Path, cache_dir: Path | None, *, executable: str | None = None,
+                    env: dict[str, str] | None = None) -> Fingerprint:
     """A cache keyed by path, size and modification time, so a rerun over a large tree decodes nothing twice."""
     import hashlib
 
     path = Path(path)
     if cache_dir is None:
-        return fingerprint_file(path)
+        return fingerprint_file(path, executable=executable, env=env)
     stat = path.stat()
     key = hashlib.sha256(f"{path.resolve()}\x1f{stat.st_size}\x1f{stat.st_mtime_ns}\x1f{SCHEMA}".encode()).hexdigest()
     cached = Path(cache_dir) / key[:2] / f"{key}.json"
     if cached.is_file():
         return Fingerprint.from_json(json.loads(cached.read_text(encoding="utf-8")))
-    result = fingerprint_file(path)
+    result = fingerprint_file(path, executable=executable, env=env)
     cached.parent.mkdir(parents=True, exist_ok=True)
     cached.write_text(json.dumps(result.to_json()), encoding="utf-8")
     return result

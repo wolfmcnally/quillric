@@ -8,11 +8,16 @@ words the service is unsure of. Neither pass is treated as right; the first stay
 from __future__ import annotations
 
 import re
+import unicodedata
 from difflib import SequenceMatcher
 from typing import Any
 
 SCHEMA = "transcribe.second_pass.v1"
-_TOKEN = re.compile(r"[a-z0-9]+(?:'[a-z0-9]+)?")
+_TOKEN = re.compile(r"[^\W_]+(?:'[^\W_]+)?", re.UNICODE)
+
+
+def normalized_tokens(text: str) -> list[str]:
+    return _TOKEN.findall(unicodedata.normalize("NFKC", text).casefold().replace("’", "'"))
 
 
 def tokens(transcript: dict[str, Any]) -> list[tuple[str, float, float]]:
@@ -22,7 +27,7 @@ def tokens(transcript: dict[str, Any]) -> list[tuple[str, float, float]]:
         if not isinstance(word, dict) or word.get("type") not in {None, "word"}:
             continue
         start, end = float(word.get("start") or 0.0), float(word.get("end") or word.get("start") or 0.0)
-        for token in _TOKEN.findall(str(word.get("text") or "").lower()):
+        for token in normalized_tokens(str(word.get("text") or "")):
             out.append((token, start, end))
     return out
 

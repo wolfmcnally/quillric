@@ -182,6 +182,22 @@ def _package_path(directory: Path, filename: str) -> Path:
     return path
 
 
+def project_diarization(transcript: dict[str, Any],
+                        labels: dict[str, str | None] | None) -> dict[str, Any]:
+    """Apply derived labels for rendering without changing the hashed provider response."""
+    if labels is None:
+        return transcript
+    words = transcript["words"]
+    expected = {str(index) for index, word in enumerate(words)
+                if isinstance(word, dict) and word.get("type") in (None, "word")}
+    if (not isinstance(labels, dict) or labels.keys() != expected
+            or any(value is not None and not isinstance(value, str) for value in labels.values())):
+        raise PackageError("invalid diarization assignments")
+    projected = [dict(word, speaker_id=labels[str(index)]) if str(index) in expected else word
+                 for index, word in enumerate(words)]
+    return dict(transcript, words=projected)
+
+
 @dataclass
 class Package:
     """A published transcription package on disk."""
@@ -244,12 +260,29 @@ class Package:
             raise PackageError(f"second transcript changed since packaging: {path}")
         return json.loads(path.read_text(encoding="utf-8"))
 
+    def _projected_transcripts(self) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        first, second = self.transcript(), self.second_transcript()
+        entry = self.sidecar["files"].get("diarization")
+        if not entry:
+            return first, second
+        path = self.path("diarization")
+        if sha256_file(path) != entry["sha256"]:
+            raise PackageError("diarization assignments changed since packaging")
+        labels = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(labels, dict) or labels.keys() != {"first", "second"}:
+            raise PackageError("invalid diarization assignments")
+        if second is None and labels["second"] is not None:
+            raise PackageError("diarization assignments require a second transcript")
+        return (project_diarization(first, labels["first"]),
+                project_diarization(second, labels["second"]) if second is not None else None)
+
     def merged_turns(self) -> list[dict[str, Any]]:
         """The transcript as turns, with both passes' disagreements kept in the flow."""
-        return merge.merged_turns(self.transcript(), self.second_transcript())
+        return merge.merged_turns(*self._projected_transcripts())
 
     def render(self) -> str:
-        return render_markdown(self.transcript(), self.sidecar, self.speakers, self.second_transcript())
+        first, second = self._projected_transcripts()
+        return render_markdown(first, self.sidecar, self.speakers, second)
 
     def assign(
         self, names: dict[str, str | None], notes: dict[str, str | None] | None = None
@@ -275,6 +308,8 @@ def render_markdown(
         leveling=sidecar.get("leveling"),
         second_pass=sidecar.get("second_pass"),
         generated_at=sidecar["generated_at"],
+        transcription_provider=sidecar.get("providers", {}).get("transcription", "elevenlabs"),
+        diarization_provider=sidecar.get("providers", {}).get("diarization", "vendor"),
         **sidecar["settings"],
     )
 
@@ -291,6 +326,8 @@ def write_package_files(
     leveling: dict[str, Any] | None = None,
     second_pass: dict[str, Any] | None = None,
     second_transcript: dict[str, Any] | None = None,
+    diarization: tuple[dict[str, str | None] | None, dict[str, str | None] | None] = (None, None),
+    providers: dict[str, str] | None = None,
 ) -> Package:
     """Write raw JSON, speaker table, sidecar, and Markdown beside SOURCE's copy in its directory."""
     directory = raw_json.parent
@@ -314,9 +351,18 @@ def write_package_files(
         second_pass=second_pass,
         second_raw=second_raw,
     )
-    speakers = new_speaker_table(transcript, sidecar["source"]["sha256"], second_transcript)
+    if providers is not None:
+        sidecar["providers"] = providers
+    first_labels, second_labels = diarization
+    if first_labels is not None or second_labels is not None:
+        assignments = directory / f"{stem}-diarization.json"
+        _write_json(assignments, {"first": first_labels, "second": second_labels})
+        sidecar["files"]["diarization"] = {"filename": assignments.name, "sha256": sha256_file(assignments)}
+    first = project_diarization(transcript, first_labels)
+    second = project_diarization(second_transcript, second_labels) if second_transcript is not None else None
+    speakers = new_speaker_table(first, sidecar["source"]["sha256"], second)
     package = Package(directory, sidecar, speakers)
     _write_json(directory / f"{stem}-package.json", sidecar)
     _write_json(package.path("speakers"), speakers)
-    package.path("markdown").write_text(render_markdown(transcript, sidecar, speakers, second_transcript), encoding="utf-8")
+    package.path("markdown").write_text(render_markdown(first, sidecar, speakers, second), encoding="utf-8")
     return package

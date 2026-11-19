@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import errno
+import fcntl
 import json
 import os
 import re
@@ -17,10 +19,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from . import auphonic, elevenlabs, levels
-from .config import ConfigurationError, load_settings
-from .second_pass import compare as compare_passes
-from .package import write_package_files
+from . import auphonic, elevenlabs, levels, media
+from .config import ConfigurationError, Settings, Vendor, load_settings
+from .providers import (
+    Command, CommandDiarization, CommandTranscription, DiarizationProvider, LevelingProvider,
+    ProviderError, TranscriptionProvider, work_environment,
+)
+from .second_pass import SCHEMA as SECOND_PASS_SCHEMA, compare as compare_passes
+from .package import project_diarization, write_package_files
 from .render import (  # noqa: F401  (re-exported for callers of this module)
     render_frontmatter,
     render_transcript_markdown,
@@ -192,9 +198,107 @@ def default_output_dir(source: Path) -> Path:
     return source.parent / source.stem
 
 
+def _absolute(path: Path, explicit: bool) -> Path:
+    if explicit and str(path).startswith("~"):
+        raise PipelineError("home-relative paths are unavailable in explicit configuration")
+    return (path if explicit else path.expanduser()).resolve()
+
+
+def _vendor_key(key: str | None, vendor: Vendor, *, explicit: bool,
+                standalone: Callable[[], str], provider: str) -> str:
+    if key is not None:
+        return key
+    if vendor.api_key is not None:
+        if value := os.environ.get(vendor.api_key.name):
+            return value
+        raise PipelineError(f"{provider}: configured secret is unavailable")
+    if explicit:
+        raise PipelineError(f"{provider}: explicit configuration requires a secret reference or caller credentials")
+    return standalone()
+
+
+def _vendor_options(vendor: Vendor, *, explicit: bool, eleven: bool = False) -> dict:
+    options = {"explicit": True, "ca_file": vendor.ca_file} if explicit else {}
+    if vendor.api_base is not None:
+        options["api_base"] = vendor.api_base
+    if eleven and vendor.allow_insecure_local_http:
+        options["allow_insecure_local_http"] = True
+    return options
+
+
+def _preflight(args: argparse.Namespace, settings: Settings) -> None:
+    first = settings.transcription
+    second = first if settings.second_provider is None else settings.second_provider
+    if (first not in ("elevenlabs", "command") or second not in ("elevenlabs", "command")
+            or settings.diarization not in ("vendor", "command", "off")
+            or settings.leveling not in ("auphonic", "ffmpeg", "off")):
+        raise PipelineError("unknown configured provider")
+    if type(settings.local_only) is not bool or type(settings.allow_brokered) is not bool:
+        raise PipelineError("egress policy settings must be booleans")
+    if first == "command" and second == "elevenlabs":
+        raise PipelineError("ElevenLabs second pass requires an ElevenLabs first pass")
+    if (first == "command") != (settings.transcription_command is not None):
+        raise PipelineError("transcription provider and command settings conflict")
+    if (settings.diarization == "command") != (settings.diarization_command is not None):
+        raise PipelineError("diarization provider and command settings conflict")
+    if (second != "command" and settings.second_command is not None
+            or second == "command" and first != "command" and settings.second_command is None):
+        raise PipelineError("second-pass provider and command settings conflict")
+    for specification in (settings.transcription_command, settings.diarization_command, settings.second_command):
+        if specification is not None:
+            if not isinstance(specification, Command):
+                raise PipelineError("invalid command settings")
+            try:
+                specification.validate()
+            except ProviderError as error:
+                raise PipelineError(str(error)) from None
+    active_second = args.second_pass != "off"
+    active_leveling = args.leveling != "off" or args.resume_auphonic_production is not None
+    if active_leveling and settings.leveling == "off":
+        raise PipelineError("leveling mode requests processing with its provider off")
+    if settings.leveling != "auphonic" and (args.resume_auphonic_production is not None
+            or args.auphonic_config is not None or args.auphonic_set or args.speech_leveler_strength is not None
+            or settings.algorithms is not None):
+        raise PipelineError("Auphonic options require the Auphonic leveling provider")
+    if settings.diarization == "off" and (args.diarization_threshold is not None or args.max_speakers is not None):
+        raise PipelineError("speaker tuning requires diarization")
+    if settings.diarization != "vendor" and (args.speaker_library or args.speaker_roles):
+        raise PipelineError("speaker library and speaker roles require vendor diarization")
+    transcribers = {first, second} if active_second else {first}
+    if "command" in transcribers:
+        if settings.diarization == "vendor":
+            raise PipelineError("vendor diarization requires ElevenLabs transcription")
+        for name in ("audio_events", "clean_transcript", "speaker_library", "speaker_roles"):
+            if getattr(args, name):
+                raise PipelineError(f"command transcription does not support {name}")
+    commands = [settings.transcription_command, settings.diarization_command]
+    if active_second and second == "command":
+        commands.append(settings.second_command or settings.transcription_command)
+    cloud = "elevenlabs" in transcribers or active_leveling and settings.leveling == "auphonic"
+    if settings.elevenlabs.api_base is not None:
+        elevenlabs.validate_api_base(settings.elevenlabs.api_base, settings.elevenlabs.allow_insecure_local_http)
+    if settings.auphonic.api_base is not None:
+        base = auphonic._normalized_request_url(settings.auphonic.api_base)
+        if "?" in base or "#" in base:
+            raise PipelineError("invalid Auphonic API base")
+    if settings.elevenlabs.allow_insecure_local_http:
+        if (settings.elevenlabs.api_base is None or
+                not settings.elevenlabs.api_base.startswith("http://")):
+            raise PipelineError("the loopback fake requires an explicit HTTP API base")
+        cloud = active_leveling and settings.leveling == "auphonic"
+    brokered = any(command is not None and command.egress == "brokered" for command in commands)
+    if settings.local_only and (cloud or brokered):
+        raise PipelineError("local-only mode refuses cloud and brokered providers")
+    if brokered and not settings.allow_brokered:
+        raise PipelineError("brokered providers require allow_brokered")
+    models = (args.model,) if settings.second_model is None else (args.model, settings.second_model)
+    if any(type(model) is not str or not model.strip() or "\0" in model for model in models):
+        raise PipelineError("model must be an exact nonempty identifier")
+
+
 def resolved_settings(args: argparse.Namespace) -> tuple[dict[str, Any], float | None]:
     config_path = (
-        args.auphonic_config.expanduser().resolve()
+        _absolute(args.auphonic_config, args._explicit_config)
         if args.auphonic_config is not None
         else DEFAULT_AUPHONIC_CONFIG
     )
@@ -272,6 +376,27 @@ def replace_directory(staging: Path, destination: Path, force: bool) -> None:
         )
 
 
+def publish_directory(staging: Path, destination: Path, force: bool) -> None:
+    """Serialize publication and keep the final rename on the destination filesystem."""
+    parent = os.open(destination.parent, os.O_RDONLY)
+    try:
+        fcntl.flock(parent, fcntl.LOCK_EX)
+        if staging.stat().st_dev == os.fstat(parent).st_dev:
+            try:
+                replace_directory(staging, destination, force)
+                return
+            except OSError as error:
+                if error.errno != errno.EXDEV:
+                    raise
+        with tempfile.TemporaryDirectory(prefix=f".{destination.name}.publish-", dir=destination.parent) as temp:
+            ready = Path(temp) / "package"
+            shutil.copytree(staging, ready)
+            replace_directory(ready, destination, force)
+        shutil.rmtree(staging, ignore_errors=True)
+    finally:
+        os.close(parent)
+
+
 def run_pipeline(
     args: argparse.Namespace, *, announce: bool = True,
     elevenlabs_api_key: str | None = None, auphonic_api_key: str | None = None,
@@ -288,17 +413,48 @@ def run_pipeline(
     progress_mode = "quiet" if args.quiet else args.progress
     reporter = ProgressReporter(progress_mode)
     staging: Path | None = None
+    scratch: tempfile.TemporaryDirectory | None = None
+    settings = args._settings
+    explicit = args._explicit_config
     try:
+        _preflight(args, settings)
         reporter.event("validation", "active", "Resolving paths and settings")
-        source = args.input_file.expanduser().resolve()
+        source = _absolute(args.input_file, explicit)
         output_dir = (
-            args.output_dir.expanduser().resolve()
+            _absolute(args.output_dir, explicit)
             if args.output_dir is not None
             else default_output_dir(source)
         )
         validate_args(args, source, output_dir)
         algorithms, diarization_threshold = resolved_settings(args)
+        if settings.diarization == "off":
+            diarization_threshold = None
+        second_provider = settings.second_provider or settings.transcription
+        second_model = settings.second_model or args.model
+        second_command = settings.second_command or settings.transcription_command
+        command = settings.transcription_command
+        first_identity = (settings.transcription, args.model, (command.argv, command.pass_env) if command else None)
+        second_identity = (second_provider, second_model,
+                           (second_command.argv, second_command.pass_env) if second_command else None)
+        same_configuration = first_identity == second_identity
+        repeat = (same_configuration and command is not None and second_command is not None
+                  and command.deterministic and second_command.deterministic)
+
+        def tool(name: str) -> str:
+            return media.executable(name, getattr(settings, name), settings.executable_path, explicit=explicit)
+
+        def measure(path: Path, environment: dict[str, str] | None = None) -> levels.Levels:
+            if not explicit:
+                return levels.measure(path)
+            try:
+                executable = tool("ffmpeg")
+            except ProviderError as error:
+                raise levels.LevelsError(str(error)) from None
+            return levels.measure(path, executable=executable, env=environment or {})
+
         settings_summary = {
+            "providers": {"transcription": settings.transcription, "diarization": settings.diarization,
+                          "leveling": settings.leveling, "second_transcription": second_provider},
             "input": str(source),
             "output_directory": str(output_dir),
             "leveling": {"mode": args.leveling, "second_pass": args.second_pass, "uneven_threshold_db": args.uneven_threshold},
@@ -318,10 +474,12 @@ def run_pipeline(
                 "speaker_roles": args.speaker_roles,
             },
         }
+        if args.dry_run and args.second_pass == "on":
+            settings_summary["leveling"]["would_transcribe_twice"] = not repeat
         reporter.event("validation", "completed", "Paths and settings are valid")
         if args.dry_run and "auto" in {args.leveling, args.second_pass}:
             try:
-                planned = levels.measure(source)  # local and free, so a dry run can say what would happen
+                planned = measure(source)  # local and free, so a dry run can say what would happen
             except levels.LevelsError as error:
                 settings_summary["leveling"].update(levels=None, measurement_error=str(error))  # the real run would stop here
             else:
@@ -329,7 +487,8 @@ def run_pipeline(
                     levels=planned.as_dict(),
                     uneven=planned.uneven(args.uneven_threshold),
                     would_level=args.leveling == "on" or (args.leveling == "auto" and planned.uneven(args.uneven_threshold)),
-                    would_transcribe_twice=args.second_pass == "on" or (args.second_pass == "auto" and planned.uneven(args.uneven_threshold)),
+                    would_transcribe_twice=not repeat and (args.second_pass == "on"
+                        or (args.second_pass == "auto" and planned.uneven(args.uneven_threshold))),
                 )
         if args.dry_run:
             if announce:
@@ -342,11 +501,19 @@ def run_pipeline(
             )
 
         output_dir.parent.mkdir(parents=True, exist_ok=True)
-        staging = Path(
-            tempfile.mkdtemp(
-                prefix=f".{output_dir.name}.transcribe-", dir=output_dir.parent
-            )
-        )
+        stage_parent = _absolute(args.staging_dir, explicit) if args.staging_dir else output_dir.parent
+        work_parent = _absolute(args.work_dir, explicit) if args.work_dir else None
+        for parent in (stage_parent, work_parent):
+            if parent is not None and parent.is_relative_to(output_dir):
+                raise PipelineError("staging and work directories must be outside the output package")
+        stage_parent.mkdir(parents=True, exist_ok=True)
+        staging = Path(tempfile.mkdtemp(prefix=f".{output_dir.name}.transcribe-", dir=stage_parent))
+        if work_parent is not None:
+            work_parent.mkdir(parents=True, exist_ok=True)
+        scratch = tempfile.TemporaryDirectory(prefix=".quillric-work-", dir=work_parent or staging)
+        work = Path(scratch.name)
+        child_env = work_environment(work, settings.executable_path)
+        media_env = child_env if explicit else None
         source_copy = staging / source.name
         adjusted_name = f"{source.stem}-adjusted.mp3"
         adjusted_path = staging / adjusted_name
@@ -366,7 +533,7 @@ def run_pipeline(
         measured: levels.Levels | None = None
         if args.leveling == "auto" or args.second_pass == "auto":
             reporter.event("levels", "active", "Measuring speech levels locally")
-            measured = levels.measure(source_copy)
+            measured = measure(source_copy, media_env)
             reporter.event("levels", "completed", f"Speech level spread {measured.spread_db} dB", spread_db=measured.spread_db)
         uneven = measured is not None and measured.uneven(args.uneven_threshold)
         leveled = args.leveling == "on" or (args.leveling == "auto" and uneven) or args.resume_auphonic_production is not None
@@ -375,9 +542,21 @@ def run_pipeline(
         effective_algorithms: dict[str, Any] = {}
         effective_mp3_bitrate = args.mp3_bitrate
         stt_input = source_copy
-        if leveled:
+        if explicit and (source.suffix.lower() in media.VIDEO_SUFFIXES or settings.ffprobe is not None
+                         or settings.executable_path is not None):
+            stt_input = media.video_audio(source_copy, work / "audio.flac", tool("ffprobe"),
+                                          lambda: tool("ffmpeg"), media_env)
+        if leveled and settings.leveling == "ffmpeg":
+            reporter.event("ffmpeg_leveling", "active", "Leveling audio locally")
+            leveler: LevelingProvider = media.FFmpegLeveling(tool("ffmpeg"), media_env)
+            leveler.level(stt_input, adjusted_path, effective_mp3_bitrate)
+            stt_input = adjusted_path
+            reporter.event("ffmpeg_leveling", "completed", "Local leveling complete")
+        if leveled and settings.leveling == "auphonic":
             auphonic_client = auphonic_client if auphonic_client is not None else auphonic.AuphonicClient(
-                auphonic_api_key if auphonic_api_key is not None else auphonic.load_api_key())
+                _vendor_key(auphonic_api_key, settings.auphonic, explicit=explicit,
+                            standalone=auphonic.load_api_key, provider="Auphonic"),
+                **_vendor_options(settings.auphonic, explicit=explicit))
             details: dict[str, Any] | None = None
             effective_algorithms = algorithms
             effective_mp3_bitrate = args.mp3_bitrate
@@ -504,8 +683,44 @@ def run_pipeline(
 
             stt_input = adjusted_path
 
-        elevenlabs_client = elevenlabs_client if elevenlabs_client is not None else elevenlabs.ElevenLabsClient(
-            elevenlabs_api_key if elevenlabs_api_key is not None else elevenlabs.load_api_key())
+        def vendor_transcribe(model: str, progress=None):
+            nonlocal elevenlabs_client
+            if elevenlabs_client is None:
+                elevenlabs_client = elevenlabs.ElevenLabsClient(
+                    _vendor_key(elevenlabs_api_key, settings.elevenlabs, explicit=explicit,
+                                standalone=elevenlabs.load_api_key, provider="ElevenLabs"),
+                    **_vendor_options(settings.elevenlabs, explicit=explicit, eleven=True))
+            optional = {} if settings.diarization == "vendor" else {"diarize": False}
+            if progress is not None:
+                optional["progress"] = progress
+            return elevenlabs_client.transcribe(
+                stt_input,
+                args.max_speakers if settings.diarization == "vendor" else None,
+                diarization_threshold if settings.diarization == "vendor" else None,
+                model_id=model, language_code=args.language_code, tag_audio_events=args.audio_events,
+                no_verbatim=args.clean_transcript, use_speaker_library=args.speaker_library,
+                detect_speaker_roles=args.speaker_roles, **optional,
+            )
+
+        def local_transcribe(spec, model: str):
+            if spec is None:
+                raise PipelineError("command transcription requires a helper")
+            transcriber: TranscriptionProvider = CommandTranscription(spec, work, child_env)
+            return transcriber.transcribe(stt_input, model, args.language_code)
+
+        diarizer: DiarizationProvider | None = None
+        if settings.diarization_command is not None:
+            diarizer = CommandDiarization(settings.diarization_command, work, child_env)
+
+        def assignments(raw):
+            if diarizer is not None:
+                return diarizer.diarize(stt_input, raw, max_speakers=args.max_speakers,
+                                        threshold=diarization_threshold)
+            if settings.diarization == "off":
+                return {str(index): None for index, word in enumerate(raw["words"])
+                        if isinstance(word, dict) and word.get("type") in (None, "word")}
+            return None
+
         elevenlabs_upload_completed = False
         transcription_stop = threading.Event()
         transcription_heartbeat: threading.Thread | None = None
@@ -552,55 +767,48 @@ def run_pipeline(
                 transcription_heartbeat.start()
                 elevenlabs_upload_completed = True
 
-        try:
-            transcript = elevenlabs_client.transcribe(
-                stt_input,
-                args.max_speakers,
-                diarization_threshold,
-                model_id=args.model,
-                language_code=args.language_code,
-                tag_audio_events=args.audio_events,
-                no_verbatim=args.clean_transcript,
-                use_speaker_library=args.speaker_library,
-                detect_speaker_roles=args.speaker_roles,
-                progress=report_elevenlabs_upload,
-            )
-        finally:
-            transcription_stop.set()
-            if transcription_heartbeat is not None:
-                transcription_heartbeat.join()
-        if not elevenlabs_upload_completed:
-            reporter.event(
-                "elevenlabs_upload",
-                "completed",
-                "Audio uploaded to ElevenLabs",
-            )
+        if settings.transcription == "elevenlabs":
+            try:
+                transcript = vendor_transcribe(args.model, report_elevenlabs_upload)
+            finally:
+                transcription_stop.set()
+                if transcription_heartbeat is not None:
+                    transcription_heartbeat.join()
+            if not elevenlabs_upload_completed:
+                reporter.event("elevenlabs_upload", "completed", "Audio uploaded to ElevenLabs")
+            stage = "elevenlabs_transcription"
+        else:
+            stage = "command_transcription"
+            reporter.event(stage, "active", "Running configured transcription command")
+            transcript = local_transcribe(command, args.model)
+        first_labels = assignments(transcript)
         reporter.event(
-            "elevenlabs_transcription",
+            stage,
             "completed",
-            "Diarized transcription received",
+            "Transcription received",
             word_count=sum(
                 1
                 for word in transcript.get("words", [])
                 if isinstance(word, dict) and word.get("type") == "word"
             ),
-            speaker_count=len(transcript_speakers(transcript)),
+            speaker_count=len(transcript_speakers(project_diarization(transcript, first_labels))),
         )
 
         second_transcript: dict[str, Any] | None = None
-        if second_pass_wanted:
+        second_labels = None
+        comparison = None
+        if second_pass_wanted and repeat:
+            comparison = {"schema": SECOND_PASS_SCHEMA, "independent": False,
+                          "reason": "same_deterministic_provider_and_model"}
+            reporter.event("second_pass", "completed", "Identical deterministic second pass skipped")
+        elif second_pass_wanted:
             reporter.event("second_pass", "active", "Transcribing a second time to find uncertain words")
-            second_transcript = elevenlabs_client.transcribe(
-                stt_input,
-                args.max_speakers,
-                diarization_threshold,
-                model_id=args.model,
-                language_code=args.language_code,
-                tag_audio_events=args.audio_events,
-                no_verbatim=args.clean_transcript,
-                use_speaker_library=args.speaker_library,
-                detect_speaker_roles=args.speaker_roles,
-            )
+            second_transcript = (vendor_transcribe(second_model) if second_provider == "elevenlabs"
+                                 else local_transcribe(second_command, second_model))
+            second_labels = assignments(second_transcript)
+            comparison = compare_passes(transcript, second_transcript)
+            comparison.update(provider=second_provider, model=second_model,
+                              basis="repeat" if same_configuration else "distinct_configuration")
             reporter.event("second_pass", "completed", "Second transcription received")
 
         reporter.event("artifacts", "active", "Writing JSON, sidecar, speaker table, and Markdown")
@@ -611,12 +819,16 @@ def run_pipeline(
             adjusted=adjusted_path if leveled else None,
             leveling={
                 "mode": args.leveling,
+                "provider": settings.leveling,
+                "algorithm": media.FILTER if leveled and settings.leveling == "ffmpeg" else None,
                 "applied": leveled,
                 "uneven_threshold_db": args.uneven_threshold,
                 "levels": measured.as_dict() if measured is not None else None,
             },
-            second_pass=compare_passes(transcript, second_transcript) if second_transcript is not None else None,
+            second_pass=comparison,
             second_transcript=second_transcript,
+            diarization=(first_labels, second_labels),
+            providers={"transcription": settings.transcription, "diarization": settings.diarization},
             raw_json=raw_json_path,
             transcript=transcript,
             settings={
@@ -635,7 +847,9 @@ def run_pipeline(
         )
         reporter.event("artifacts", "completed", "JSON, sidecar, speaker table, and Markdown written")
         reporter.event("publish", "active", "Publishing completed package")
-        replace_directory(staging, output_dir, args.force)
+        scratch.cleanup()
+        scratch = None
+        publish_directory(staging, output_dir, args.force)
         staging = None
         reporter.event("publish", "completed", "Package published")
         reporter.event(
@@ -645,6 +859,11 @@ def run_pipeline(
             print(output_dir, flush=True)
         return output_dir
     except BaseException as error:
+        if scratch is not None:
+            try:
+                scratch.cleanup()
+            except OSError:
+                pass
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)
         message = "Interrupted" if isinstance(error, KeyboardInterrupt) else str(error)
@@ -652,7 +871,7 @@ def run_pipeline(
         raise
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None, *, settings: Settings | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="transcribe",
         description=__doc__,
@@ -681,6 +900,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="exact output directory (default: INPUT_DIR/INPUT_STEM)",
     )
+    parser.add_argument("--staging-dir", type=Path, help="directory for in-progress packages")
+    parser.add_argument("--work-dir", type=Path, help="directory for per-run scratch and caches")
     parser.add_argument("--force", action="store_true", help="replace an existing output directory")
     parser.add_argument("--dry-run", action="store_true", help="print resolved settings without API calls or writes")
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
@@ -690,7 +911,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--leveling",
         choices=["off", "auto", "on"],
         default="off",
-        help="level the audio at Auphonic before transcribing: never, only when the recording is uneven, or always",
+        help="level with the configured provider before transcribing: never, only when uneven, or always",
     )
     decision_group.add_argument(
         "--second-pass",
@@ -766,12 +987,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--poll-interval", type=float, default=10.0, help=argparse.SUPPRESS)
     parser.add_argument("--wait-timeout", type=float, default=7200.0, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    if not args.config:
+    if settings is not None and not isinstance(settings, Settings):
+        raise ConfigurationError("settings must be a Quillric Settings object")
+    if settings is not None and args.config:
+        raise ConfigurationError("pass validated settings or --config, not both")
+    args._explicit_config = bool(args.config) or settings is not None
+    settings = load_settings(args.config) if args.config else settings
+    args._settings = settings or Settings()
+    if settings is None:
         return args
-    settings = load_settings(args.config)
     configurable = {"leveling", "second_pass", "uneven_threshold", "mp3_bitrate", "model",
                     "language_code", "max_speakers", "diarization_threshold", "audio_events",
-                    "clean_transcript", "speaker_library", "speaker_roles"}
+                    "clean_transcript", "speaker_library", "speaker_roles", "output_dir",
+                    "staging_dir", "work_dir", "progress", "quiet", "force", "dry_run",
+                    "auphonic_config", "auphonic_set", "speech_leveler_strength",
+                    "resume_auphonic_production", "poll_interval", "wait_timeout"}
     # Let argparse identify explicitly supplied options (including aliases and --option=value).
     # Suppressing only these defaults avoids mistaking a built-in default for a CLI override.
     defaults = [(action, action.default) for action in parser._actions
@@ -784,11 +1014,17 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         for action, default in defaults:
             action.default = default
     for destination, value in settings.overrides:
+        if destination not in configurable:
+            raise ConfigurationError("unknown settings override")
         setattr(args, destination, value)
     if "max_speakers" in explicit:
         args.diarization_threshold = None
     elif "diarization_threshold" in explicit:
         args.max_speakers = None
+    if "quiet" in explicit:
+        args.progress = "auto"
+    elif "progress" in explicit:
+        args.quiet = False
     for destination in configurable.intersection(explicit):
         setattr(args, destination, explicit[destination])
     if settings.algorithms is not None and args.auphonic_config is not None:
@@ -809,8 +1045,20 @@ def main(argv: list[str] | None = None) -> int:
 
         return fingerprint_cli.main(arguments[1:])
     try:
+        if arguments[:1] == ["leveling-helper"]:
+            return media.leveling_helper(arguments[1:])
+        if arguments[:1] == ["doctor"]:
+            parser = argparse.ArgumentParser(prog="transcribe doctor")
+            parser.add_argument("--config", type=Path, action="append", default=[])
+            args = parser.parse_args(arguments[1:])
+            settings = load_settings(args.config) if args.config else Settings()
+            tools = [media.executable(name, getattr(settings, name), settings.executable_path,
+                     explicit=bool(args.config)) for name in ("ffmpeg", "ffprobe")]
+            print(json.dumps(media.doctor(*tools, {} if args.config else None), indent=2))
+            return 0
         run_pipeline(parse_args(arguments))
-    except (ConfigurationError, PipelineError, auphonic.AuphonicError, elevenlabs.TranscriptionError, levels.LevelsError, OSError) as error:
+    except (ConfigurationError, PipelineError, ProviderError, auphonic.AuphonicError,
+            elevenlabs.TranscriptionError, levels.LevelsError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

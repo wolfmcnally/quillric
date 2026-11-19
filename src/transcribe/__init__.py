@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .auphonic import AuphonicClient
+    from .config import Settings
     from .elevenlabs import ElevenLabsClient
 
 from . import levels, merge, second_pass
@@ -55,6 +56,7 @@ def transcribe_file(
     elevenlabs_api_key: str | None = None, auphonic_api_key: str | None = None,
     elevenlabs_client: ElevenLabsClient | None = None,
     auphonic_client: AuphonicClient | None = None,
+    settings: Settings | None = None,
 ) -> Package:
     """Run the full pipeline on SOURCE and return the published package.
 
@@ -65,7 +67,7 @@ def transcribe_file(
     """
     from . import cli
 
-    args = cli.parse_args([str(source), "--quiet", *options])
+    args = cli.parse_args([str(source), "--quiet", *options], settings=settings)
     directory = cli.run_pipeline(
         args, announce=False, elevenlabs_api_key=elevenlabs_api_key,
         auphonic_api_key=auphonic_api_key, elevenlabs_client=elevenlabs_client,

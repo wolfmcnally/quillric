@@ -77,17 +77,18 @@ def levels_from_windows(window_db: list[float]) -> Levels:
     )
 
 
-def window_levels(path: Path | str) -> list[float]:
-    executable = shutil.which("ffmpeg")
+def window_levels(path: Path | str, *, executable: str | None = None,
+                  env: dict[str, str] | None = None) -> list[float]:
+    executable = executable or shutil.which("ffmpeg")
     if executable is None:
         raise LevelsError("ffmpeg is required to measure a recording")
     chain = (
         f"aformat=channel_layouts=mono,aresample={RATE},asetnsamples=n={int(RATE * WINDOW_SECONDS)}:p=0,"
         "astats=metadata=1:reset=1,ametadata=mode=print:key=lavfi.astats.Overall.RMS_level:file=-"
     )
-    command = [executable, "-v", "error", "-nostdin", "-i", str(path), "-map", "0:a:0", "-af", chain, "-f", "null", "-"]
+    command = [executable, "-v", "error", "-nostdin", "-protocol_whitelist", "file,pipe", "-i", str(path), "-map", "0:a:0", "-af", chain, "-f", "null", "-"]
     try:
-        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=7200)
+        result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=7200, env=env)
     except subprocess.CalledProcessError as exc:
         raise LevelsError(f"could not decode {Path(path).name}: {exc.stderr.strip()[-200:]}") from exc
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -100,5 +101,6 @@ def window_levels(path: Path | str) -> list[float]:
     return values
 
 
-def measure(path: Path | str) -> Levels:
-    return levels_from_windows(window_levels(path))
+def measure(path: Path | str, *, executable: str | None = None,
+            env: dict[str, str] | None = None) -> Levels:
+    return levels_from_windows(window_levels(path, executable=executable, env=env))

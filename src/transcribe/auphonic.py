@@ -22,6 +22,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+if __package__:
+    from . import http_settings
+else:
+    import http_settings
+
+
 API_BASE = "https://auphonic.com"
 TERMINAL_STATUS_DONE = 3
 TERMINAL_STATUS_ERROR = 2
@@ -253,13 +259,24 @@ def _decode_json(body: bytes, context: str) -> dict[str, Any]:
 
 
 class AuphonicClient:
-    def __init__(self, api_key: str, api_base: str = API_BASE, timeout: float = 60.0):
+    def __init__(self, api_key: str, api_base: str = API_BASE, timeout: float = 60.0, *,
+                 explicit: bool = False, ca_file: Path | None = None):
         self.api_key = api_key
         self.api_base = _normalized_request_url(api_base).rstrip("/")
         parsed_base = urllib.parse.urlsplit(self.api_base)
         if parsed_base.query or parsed_base.fragment:
             raise AuphonicError("API base URL must not contain a query or fragment")
         self.timeout = timeout
+        self.explicit = explicit
+        self.ca_file = ca_file
+
+    def _opener(self):
+        if not self.explicit:
+            return urllib.request.build_opener(CrossOriginAuthStripper())
+        return urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), CrossOriginAuthStripper(),
+            urllib.request.HTTPSHandler(context=http_settings.tls_context(self.ca_file)),
+        )
 
     def _request_json(
         self, method: str, path: str, payload: dict[str, Any] | None = None
@@ -272,7 +289,7 @@ class AuphonicClient:
             _normalized_request_url(f"{self.api_base}{path}"),
             data=body, headers=headers, method=method
         )
-        opener = urllib.request.build_opener(CrossOriginAuthStripper())
+        opener = self._opener()
         try:
             with opener.open(request, timeout=self.timeout) as response:
                 document = _decode_json(response.read(), path)
@@ -343,12 +360,14 @@ class AuphonicClient:
             parsed.hostname,
             port=port,
             timeout=self.timeout,
-            context=ssl.create_default_context(),
+            context=(http_settings.tls_context(self.ca_file) if self.explicit else
+                     ssl.create_default_context()),
         )
 
         boundary = f"----auphonic-{uuid.uuid4().hex}"
         safe_name = source.name.replace('"', "_").replace("\r", "_").replace("\n", "_")
-        content_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+        content_type = (http_settings.media_type(safe_name) if self.explicit else
+                        mimetypes.guess_type(safe_name)[0] or "application/octet-stream")
         prefix = (
             f"--{boundary}\r\n"
             f'Content-Disposition: form-data; name="input_file"; filename="{safe_name}"\r\n'
@@ -403,7 +422,7 @@ class AuphonicClient:
         destination: Path,
         progress: Callable[[int, int | None], None] | None = None,
     ) -> None:
-        opener = urllib.request.build_opener(CrossOriginAuthStripper())
+        opener = self._opener()
         partial = destination.with_name(f".{destination.name}.part")
         try:
             url = _normalized_request_url(download_url)
