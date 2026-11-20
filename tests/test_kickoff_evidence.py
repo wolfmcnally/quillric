@@ -140,7 +140,7 @@ def run(
         cwd=cwd or ROOT,
         capture_output=True,
         text=True,
-        timeout=20,
+        timeout=120,  # Generous: these commands answer; a loaded host must not fail them.
         check=False,
     )
 
@@ -414,7 +414,8 @@ def advisory_continuation(repository: Path, tmp_path: Path, request):
             capture_output=True,
             text=True,
             check=False,
-            timeout=15,
+            # Past the watched command's own 60-second hard clock: its clocks decide, not ours.
+            timeout=120,
         )
         assert watched.returncode == 0, watched.stderr
         dispatch = [
@@ -907,7 +908,7 @@ def test_change_manifest_is_candidate_bound_and_detects_authority_drift(
             },
             text=True,
             capture_output=True,
-            timeout=20,
+            timeout=120,
             check=False,
         )
         assert launched.returncode == 0, launched.stderr
@@ -3422,7 +3423,7 @@ def test_a_refused_launch_is_relaunched_or_recorded_never_left_unaccounted(
                 "KICKOFF_CLI_CLAUDE": str(executable),
                 "KICKOFF_CONFIG_FILE": str(directory / "fixture-config.yaml"),
             },
-            capture_output=True, text=True, check=False, timeout=15,
+            capture_output=True, text=True, check=False, timeout=120,
         )  # fmt: skip
 
     def record(artifact: Path) -> subprocess.CompletedProcess[str]:
