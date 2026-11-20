@@ -1,6 +1,6 @@
 {
   "active_imports": [],
-  "adopted": false,
+  "adopted": true,
   "format": "starter.multioperator.v1",
   "historical_plans": {
     "plan/01-dependency-ready.md": "73724e3eb251cd2223e5b9f96cfbc467ad5f780a28ee59add4f41d7b143686b4",

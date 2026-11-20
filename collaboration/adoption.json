@@ -18,9 +18,9 @@
     "carried_sections": ["Commit and push authority", "Validation and data boundaries"],
     "retrofit_source_commit": "f67b6af1e0dd4ae14c39f062a224494274fce3d7"
   },
-  "declaration": "pending: the owner declares adoption with ./bin/multioperator adopt --root . once a first approved phase exists; an adopted empty phase inventory is refused",
+  "declaration": "declared 2026-11-20 with ./bin/multioperator adopt --root . after the owner-approved first phase review-critical-proofs was registered not started",
   "conversion_reports": "adoption-blockers.json retains the conversion-time observations; this record describes their resolution",
   "preservation": "product source, tests, configs, scripts, historical plans, release metadata and CI qualification are retained; the root Python layout is not moved",
   "proof_estate": "initial recipient-local baseline of 382 proofs pending bounded review; three observed-red witness receipts for adapted assertions",
-  "instruction_loading": "not-observed"
+  "instruction_loading": "observed 2026-11-20 with Claude Code 2.1.329, tools disabled: a fresh session in the repository quoted the AGENTS.md commit-authority sentence; a fresh session in an empty directory with no ancestor instructions answered NONE; raw outputs retained under .kickoff/instruction-load"
 }
