@@ -114,6 +114,8 @@ class FingerprintTests(unittest.TestCase):
             fp.fingerprint_file(bogus)
 
     def test_duplicates_command_reports_unique_recordings_and_hours(self) -> None:
+        # The undecodable file is this test's own input; another test may run on another worker.
+        (Path(self.temporary.name) / "bogus.mp3").write_bytes(b"not audio at all")
         out = io.StringIO()
         with redirect_stdout(out):
             code = cli.main(["duplicates", self.temporary.name, "--json", "--workers", "2"])

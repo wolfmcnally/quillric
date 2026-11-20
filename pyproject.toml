@@ -28,3 +28,114 @@ packages = ["src/transcribe"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[dependency-groups]
+dev = [
+  "pyyaml>=6.0,<7",
+  "pytest>=8.0,<9.2", # pytest 9.2.0 with pytest-xdist 3.8.0 stops serializing xdist_group.
+  "ruff>=0.6",
+  "cosmic-ray>=8.7,<9",
+  "pytest-xdist>=3.8,<4",
+  "numpy>=1.24", # The fingerprint extra, so the governed suite runs without skips.
+]
+
+[tool.uv]
+required-version = ">=0.9.26"
+python-preference = "only-managed"
+
+[tool.hatch.build.targets.sdist]
+# The release source archive keeps the product inventory; methodology governance stays in Git.
+include = [
+  "/.github/scripts/test.py",
+  "/.github/scripts/verify_dist.py",
+  "/.github/workflows/ci.yml",
+  "/.gitignore",
+  "/.python-version",
+  "/AGENTS.md",
+  "/LICENSE",
+  "/README.md",
+  "/bin/compare_transcripts.py",
+  "/bin/render_transcripts.py",
+  "/bin/transcribe",
+  "/bin/transcript_disagreements.py",
+  "/briefs/human-in-the-loop-speaker-resolution.md",
+  "/configs/amplify-speech.json",
+  "/configs/gentle.json",
+  "/configs/revised.json",
+  "/plan/01-dependency-ready.md",
+  "/plan/02-retry-refused-requests.md",
+  "/plan/03-configuration-selected-providers.md",
+  "/pyproject.toml",
+  "/src/transcribe/__init__.py",
+  "/src/transcribe/auphonic.py",
+  "/src/transcribe/cli.py",
+  "/src/transcribe/config.py",
+  "/src/transcribe/elevenlabs.py",
+  "/src/transcribe/fingerprint.py",
+  "/src/transcribe/fingerprint_cli.py",
+  "/src/transcribe/http_settings.py",
+  "/src/transcribe/leveling-only.json",
+  "/src/transcribe/levels.py",
+  "/src/transcribe/media.py",
+  "/src/transcribe/merge.py",
+  "/src/transcribe/package.py",
+  "/src/transcribe/providers.py",
+  "/src/transcribe/render.py",
+  "/src/transcribe/second_pass.py",
+  "/src/transcribe/speakers_cli.py",
+  "/tests/command_helper.py",
+  "/tests/test_auphonic_process.py",
+  "/tests/test_command_providers.py",
+  "/tests/test_compare_transcripts.py",
+  "/tests/test_config.py",
+  "/tests/test_elevenlabs_transcribe.py",
+  "/tests/test_fingerprint.py",
+  "/tests/test_leveling.py",
+  "/tests/test_merge.py",
+  "/tests/test_package.py",
+  "/tests/test_security.py",
+  "/tests/test_transcribe_cli.py",
+  "/uv.lock",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+# Existing product sources keep their established formatting; new files follow the gate.
+extend-exclude = [
+  "src/transcribe/__init__.py",
+  "src/transcribe/auphonic.py",
+  "src/transcribe/cli.py",
+  "src/transcribe/config.py",
+  "src/transcribe/elevenlabs.py",
+  "src/transcribe/fingerprint.py",
+  "src/transcribe/fingerprint_cli.py",
+  "src/transcribe/http_settings.py",
+  "src/transcribe/levels.py",
+  "src/transcribe/media.py",
+  "src/transcribe/merge.py",
+  "src/transcribe/package.py",
+  "src/transcribe/providers.py",
+  "src/transcribe/render.py",
+  "src/transcribe/second_pass.py",
+  "src/transcribe/speakers_cli.py",
+  "tests/command_helper.py",
+  "tests/test_auphonic_process.py",
+  "tests/test_command_providers.py",
+  "tests/test_compare_transcripts.py",
+  "tests/test_config.py",
+  "tests/test_elevenlabs_transcribe.py",
+  "tests/test_fingerprint.py",
+  "tests/test_leveling.py",
+  "tests/test_merge.py",
+  "tests/test_package.py",
+  "tests/test_security.py",
+  "tests/test_transcribe_cli.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

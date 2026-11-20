@@ -1,0 +1,26 @@
+{
+  "schema": "quillric.methodology-adoption.v1",
+  "as_of": "2026-11-20",
+  "previous_baseline": "outside",
+  "source": {
+    "name": "agentic-coding-starter",
+    "release": "v1.9.0",
+    "commit": "8452604c4f80ba307e6a26ff0835af7a6178f496",
+    "tag_signature": "verified-good"
+  },
+  "receiver_baseline_commit": "6336b6d07aba6cd815e991a7297f8dc63ed43f64",
+  "reconciliation": {
+    "approval": "Owner-approved: carry the existing rules unchanged into the new regular AGENTS.md and retire the duplicate pointer/canonical layout.",
+    "retired": {
+      "AGENTS.md": "394b4fbf1e88d57f450a0da2e851adde5b98f39a779961ae945b2c40949e599a",
+      "CLAUDE.md": "204ffec66d53ba588f9fc1153937a2d7c302fbd198186ff44ebf8ede50b4a556"
+    },
+    "carried_sections": ["Commit and push authority", "Validation and data boundaries"],
+    "retrofit_source_commit": "f67b6af1e0dd4ae14c39f062a224494274fce3d7"
+  },
+  "declaration": "pending: the owner declares adoption with ./bin/multioperator adopt --root . once a first approved phase exists; an adopted empty phase inventory is refused",
+  "conversion_reports": "adoption-blockers.json retains the conversion-time observations; this record describes their resolution",
+  "preservation": "product source, tests, configs, scripts, historical plans, release metadata and CI qualification are retained; the root Python layout is not moved",
+  "proof_estate": "initial recipient-local baseline of 382 proofs pending bounded review; three observed-red witness receipts for adapted assertions",
+  "instruction_loading": "not-observed"
+}

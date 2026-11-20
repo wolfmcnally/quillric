@@ -1,0 +1,1142 @@
+schema: agentic.proof_estate.v5
+baseline_report: reports/test-governance/quillric-baseline.json
+audit_ledger: reports/test-governance/quillric-decisions.jsonl
+witness_ledger: reports/test-governance/quillric-witnesses.jsonl
+adoption:
+  mode: bounded
+  reason: 'Initial Starter 1.9.0 retrofit inventory: every product and inherited proof stays executable
+    and pending local review. Review proceeds in bounded batches when a concrete signal (changed behavior,
+    an escaped defect, confusing failures or cost growth) names the affected contract; no whole-estate
+    re-witness, rewrite or deletion.'
+hang_timeout_seconds: 1800
+mutation:
+  tool: null
+  reason: No mutation survey has been requested or qualified for Quillric; focused authoring witnesses
+    are separate.
+critical_risks:
+  custody:
+    state: applicable
+    direct_proof: pytest:tests/test_multioperator.py::test_transition_and_maintenance_refuse_false_state
+  authority:
+    state: applicable
+    direct_proof: pytest:tests/test_multioperator.py::test_transition_and_maintenance_refuse_false_state
+  concurrency:
+    state: applicable
+    direct_proof: pytest:tests/test_security.py::ExplicitCredentialTests::test_concurrent_calls_keep_clients_and_credentials_separate
+  atomicity:
+    state: applicable
+    direct_proof: pytest:tests/test_transcribe_cli.py::PipelineTests::test_force_keeps_existing_package_when_replacement_fails
+  corruption:
+    state: applicable
+    direct_proof: pytest:tests/test_package.py::PackageTests::test_altered_evidence_is_refused
+  recovery:
+    state: applicable
+    direct_proof: pytest:tests/test_transcribe_cli.py::PipelineTests::test_api_failure_removes_partial_package
+  security:
+    state: applicable
+    direct_proof: pytest:tests/test_security.py::JsonApiSecurityTests::test_real_opener_redirect_chain_never_restores_credentials
+  public-contract:
+    state: applicable
+    direct_proof: pytest:tests/test_package.py::PackageTests::test_package_records_source_identity_and_is_loadable
+  schema:
+    state: applicable
+    direct_proof: pytest:tests/test_config.py::ConfigurationTests::test_invalid_schema_rejects_types_ranges_unknown_fields_and_authority
+  core-success:
+    state: applicable
+    direct_proof: pytest:tests/test_transcribe_cli.py::PipelineTests::test_pipeline_creates_complete_default_package_atomically
+  deploy:
+    state: not-applicable
+    rationale: Quillric has no deployment surface; releases are GitHub release artifacts qualified by
+      CI.
+    activation_trigger: An approved hosted service, Pages site or other live deployment surface is added.
+witness_failure_lines: '^E '
+families:
+- id: pytest:tests/test_auphonic_process.py
+  kind: pytest
+  selectors:
+  - tests/test_auphonic_process.py
+  source_paths:
+  - tests/test_auphonic_process.py
+  covers:
+  - tests/test_auphonic_process.py
+  contract: Retained receiving boundary at tests/test_auphonic_process.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: &id001 []
+- id: pytest:tests/test_check.py
+  kind: pytest
+  selectors:
+  - tests/test_check.py
+  source_paths:
+  - tests/test_check.py
+  covers:
+  - tests/test_check.py
+  contract: Retained receiving boundary at tests/test_check.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_check_catalogs.py
+  kind: pytest
+  selectors:
+  - tests/test_check_catalogs.py
+  source_paths:
+  - tests/test_check_catalogs.py
+  covers:
+  - tests/test_check_catalogs.py
+  contract: Retained receiving boundary at tests/test_check_catalogs.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_check_hooks_installed.py
+  kind: pytest
+  selectors:
+  - tests/test_check_hooks_installed.py
+  source_paths:
+  - tests/test_check_hooks_installed.py
+  covers:
+  - tests/test_check_hooks_installed.py
+  contract: Retained receiving boundary at tests/test_check_hooks_installed.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_check_plan_concreteness.py
+  kind: pytest
+  selectors:
+  - tests/test_check_plan_concreteness.py
+  source_paths:
+  - tests/test_check_plan_concreteness.py
+  covers:
+  - tests/test_check_plan_concreteness.py
+  contract: Retained receiving boundary at tests/test_check_plan_concreteness.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_check_plan_delivery.py
+  kind: pytest
+  selectors:
+  - tests/test_check_plan_delivery.py
+  source_paths:
+  - tests/test_check_plan_delivery.py
+  covers:
+  - tests/test_check_plan_delivery.py
+  contract: Retained receiving boundary at tests/test_check_plan_delivery.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_check_receipt.py
+  kind: pytest
+  selectors:
+  - tests/test_check_receipt.py
+  source_paths:
+  - tests/test_check_receipt.py
+  covers:
+  - tests/test_check_receipt.py
+  contract: Retained receiving boundary at tests/test_check_receipt.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_check_release_worktrees.py
+  kind: pytest
+  selectors:
+  - tests/test_check_release_worktrees.py
+  source_paths:
+  - tests/test_check_release_worktrees.py
+  covers:
+  - tests/test_check_release_worktrees.py
+  contract: Retained receiving boundary at tests/test_check_release_worktrees.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_command_providers.py
+  kind: pytest
+  selectors:
+  - tests/test_command_providers.py
+  source_paths:
+  - tests/test_command_providers.py
+  covers:
+  - tests/test_command_providers.py
+  contract: Retained receiving boundary at tests/test_command_providers.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_compare_transcripts.py
+  kind: pytest
+  selectors:
+  - tests/test_compare_transcripts.py
+  source_paths:
+  - tests/test_compare_transcripts.py
+  covers:
+  - tests/test_compare_transcripts.py
+  contract: Retained receiving boundary at tests/test_compare_transcripts.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_config.py
+  kind: pytest
+  selectors:
+  - tests/test_config.py
+  source_paths:
+  - tests/test_config.py
+  covers:
+  - tests/test_config.py
+  contract: Retained receiving boundary at tests/test_config.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_documentation.py
+  kind: pytest
+  selectors:
+  - tests/test_documentation.py
+  source_paths:
+  - tests/test_documentation.py
+  covers:
+  - tests/test_documentation.py
+  contract: Retained receiving boundary at tests/test_documentation.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_elevenlabs_transcribe.py
+  kind: pytest
+  selectors:
+  - tests/test_elevenlabs_transcribe.py
+  source_paths:
+  - tests/test_elevenlabs_transcribe.py
+  covers:
+  - tests/test_elevenlabs_transcribe.py
+  contract: Retained receiving boundary at tests/test_elevenlabs_transcribe.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_execution_dashboard.py
+  kind: pytest
+  selectors:
+  - tests/test_execution_dashboard.py
+  source_paths:
+  - tests/test_execution_dashboard.py
+  covers:
+  - tests/test_execution_dashboard.py
+  contract: Retained receiving boundary at tests/test_execution_dashboard.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_execution_telemetry.py
+  kind: pytest
+  selectors:
+  - tests/test_execution_telemetry.py
+  source_paths:
+  - tests/test_execution_telemetry.py
+  covers:
+  - tests/test_execution_telemetry.py
+  contract: Retained receiving boundary at tests/test_execution_telemetry.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_fingerprint.py
+  kind: pytest
+  selectors:
+  - tests/test_fingerprint.py
+  source_paths:
+  - tests/test_fingerprint.py
+  covers:
+  - tests/test_fingerprint.py
+  contract: Retained receiving boundary at tests/test_fingerprint.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_install_hooks.py
+  kind: pytest
+  selectors:
+  - tests/test_install_hooks.py
+  source_paths:
+  - tests/test_install_hooks.py
+  covers:
+  - tests/test_install_hooks.py
+  contract: Retained receiving boundary at tests/test_install_hooks.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_kickoff_config.py
+  kind: pytest
+  selectors:
+  - tests/test_kickoff_config.py
+  source_paths:
+  - tests/test_kickoff_config.py
+  covers:
+  - tests/test_kickoff_config.py
+  contract: Retained receiving boundary at tests/test_kickoff_config.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_kickoff_control_plane.py
+  kind: pytest
+  selectors:
+  - tests/test_kickoff_control_plane.py
+  source_paths:
+  - tests/test_kickoff_control_plane.py
+  covers:
+  - tests/test_kickoff_control_plane.py
+  contract: Retained receiving boundary at tests/test_kickoff_control_plane.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_kickoff_evidence.py
+  kind: pytest
+  selectors:
+  - tests/test_kickoff_evidence.py
+  source_paths:
+  - tests/test_kickoff_evidence.py
+  covers:
+  - tests/test_kickoff_evidence.py
+  contract: Retained receiving boundary at tests/test_kickoff_evidence.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_kickoff_tree_id.py
+  kind: pytest
+  selectors:
+  - tests/test_kickoff_tree_id.py
+  source_paths:
+  - tests/test_kickoff_tree_id.py
+  covers:
+  - tests/test_kickoff_tree_id.py
+  contract: Retained receiving boundary at tests/test_kickoff_tree_id.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_lessons.py
+  kind: pytest
+  selectors:
+  - tests/test_lessons.py
+  source_paths:
+  - tests/test_lessons.py
+  covers:
+  - tests/test_lessons.py
+  contract: Retained receiving boundary at tests/test_lessons.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_leveling.py
+  kind: pytest
+  selectors:
+  - tests/test_leveling.py
+  source_paths:
+  - tests/test_leveling.py
+  covers:
+  - tests/test_leveling.py
+  contract: Retained receiving boundary at tests/test_leveling.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_log_control_plane.py
+  kind: pytest
+  selectors:
+  - tests/test_log_control_plane.py
+  source_paths:
+  - tests/test_log_control_plane.py
+  covers:
+  - tests/test_log_control_plane.py
+  contract: Retained receiving boundary at tests/test_log_control_plane.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_merge.py
+  kind: pytest
+  selectors:
+  - tests/test_merge.py
+  source_paths:
+  - tests/test_merge.py
+  covers:
+  - tests/test_merge.py
+  contract: Retained receiving boundary at tests/test_merge.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_mirror_parity.py
+  kind: pytest
+  selectors:
+  - tests/test_mirror_parity.py
+  source_paths:
+  - tests/test_mirror_parity.py
+  covers:
+  - tests/test_mirror_parity.py
+  contract: Retained receiving boundary at tests/test_mirror_parity.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_multioperator.py
+  kind: pytest
+  selectors:
+  - tests/test_multioperator.py
+  source_paths:
+  - tests/test_multioperator.py
+  covers:
+  - tests/test_multioperator.py
+  contract: Retained receiving boundary at tests/test_multioperator.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_mutation.py
+  kind: pytest
+  selectors:
+  - tests/test_mutation.py
+  source_paths:
+  - tests/test_mutation.py
+  covers:
+  - tests/test_mutation.py
+  contract: Retained receiving boundary at tests/test_mutation.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_new_name.py
+  kind: pytest
+  selectors:
+  - tests/test_new_name.py
+  source_paths:
+  - tests/test_new_name.py
+  covers:
+  - tests/test_new_name.py
+  contract: Retained receiving boundary at tests/test_new_name.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_package.py
+  kind: pytest
+  selectors:
+  - tests/test_package.py
+  source_paths:
+  - tests/test_package.py
+  covers:
+  - tests/test_package.py
+  contract: Retained receiving boundary at tests/test_package.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_pre_commit.py
+  kind: pytest
+  selectors:
+  - tests/test_pre_commit.py
+  source_paths:
+  - tests/test_pre_commit.py
+  covers:
+  - tests/test_pre_commit.py
+  contract: Retained receiving boundary at tests/test_pre_commit.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_research_authority.py
+  kind: pytest
+  selectors:
+  - tests/test_research_authority.py
+  source_paths:
+  - tests/test_research_authority.py
+  covers:
+  - tests/test_research_authority.py
+  contract: Retained receiving boundary at tests/test_research_authority.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_review_verdicts.py
+  kind: pytest
+  selectors:
+  - tests/test_review_verdicts.py
+  source_paths:
+  - tests/test_review_verdicts.py
+  covers:
+  - tests/test_review_verdicts.py
+  contract: Retained receiving boundary at tests/test_review_verdicts.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_security.py
+  kind: pytest
+  selectors:
+  - tests/test_security.py
+  source_paths:
+  - tests/test_security.py
+  covers:
+  - tests/test_security.py
+  contract: Retained receiving boundary at tests/test_security.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_shell_syntax.py
+  kind: pytest
+  selectors:
+  - tests/test_shell_syntax.py
+  source_paths:
+  - tests/test_shell_syntax.py
+  covers:
+  - tests/test_shell_syntax.py
+  contract: Retained receiving boundary at tests/test_shell_syntax.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_test_governance.py
+  kind: pytest
+  selectors:
+  - tests/test_test_governance.py
+  source_paths:
+  - tests/test_test_governance.py
+  covers:
+  - tests/test_test_governance.py
+  contract: Retained receiving boundary at tests/test_test_governance.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_toolchain_callers.py
+  kind: pytest
+  selectors:
+  - tests/test_toolchain_callers.py
+  source_paths:
+  - tests/test_toolchain_callers.py
+  covers:
+  - tests/test_toolchain_callers.py
+  contract: Retained receiving boundary at tests/test_toolchain_callers.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_toolchain_entrypoints.py
+  kind: pytest
+  selectors:
+  - tests/test_toolchain_entrypoints.py
+  source_paths:
+  - tests/test_toolchain_entrypoints.py
+  covers:
+  - tests/test_toolchain_entrypoints.py
+  contract: Retained receiving boundary at tests/test_toolchain_entrypoints.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_transcribe_cli.py
+  kind: pytest
+  selectors:
+  - tests/test_transcribe_cli.py
+  source_paths:
+  - tests/test_transcribe_cli.py
+  covers:
+  - tests/test_transcribe_cli.py
+  contract: Retained receiving boundary at tests/test_transcribe_cli.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: pytest:tests/test_treatise.py
+  kind: pytest
+  selectors:
+  - tests/test_treatise.py
+  source_paths:
+  - tests/test_treatise.py
+  covers:
+  - tests/test_treatise.py
+  contract: Retained receiving boundary at tests/test_treatise.py
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:changed
+  kind: gate
+  selectors:
+  - changed
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:changed
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:format
+  kind: gate
+  selectors:
+  - format
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:format
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:lint
+  kind: gate
+  selectors:
+  - lint
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:lint
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-candidate-partition
+  kind: gate
+  selectors:
+  - policy-candidate-partition
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-candidate-partition
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-catalogs
+  kind: gate
+  selectors:
+  - policy-catalogs
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-catalogs
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-config
+  kind: gate
+  selectors:
+  - policy-config
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-config
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-docs
+  kind: gate
+  selectors:
+  - policy-docs
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-docs
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-execution-dashboards
+  kind: gate
+  selectors:
+  - policy-execution-dashboards
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-execution-dashboards
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-harness-parity
+  kind: gate
+  selectors:
+  - policy-harness-parity
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-harness-parity
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-hooks-installed
+  kind: gate
+  selectors:
+  - policy-hooks-installed
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-hooks-installed
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-lessons
+  kind: gate
+  selectors:
+  - policy-lessons
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-lessons
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-log
+  kind: gate
+  selectors:
+  - policy-log
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-log
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-shell-syntax
+  kind: gate
+  selectors:
+  - policy-shell-syntax
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-shell-syntax
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-test-governance
+  kind: gate
+  selectors:
+  - policy-test-governance
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-test-governance
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-test-time
+  kind: gate
+  selectors:
+  - policy-test-time
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-test-time
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-toolchain-callers
+  kind: gate
+  selectors:
+  - policy-toolchain-callers
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-toolchain-callers
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:policy-treatise
+  kind: gate
+  selectors:
+  - policy-treatise
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:policy-treatise
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:test
+  kind: gate
+  selectors:
+  - test
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:test
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: gate:gate:vital
+  kind: gate
+  selectors:
+  - vital
+  source_paths:
+  - bin/check
+  covers:
+  - bin/check
+  contract: Retained receiving boundary at gate:vital
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: hook:hook:.githooks/pre-commit:./bin/check-harness-parity
+  kind: hook
+  selectors:
+  - hook:.githooks/pre-commit:./bin/check-harness-parity
+  source_paths:
+  - .githooks/pre-commit
+  covers:
+  - .githooks/pre-commit
+  contract: Retained receiving boundary at hook:.githooks/pre-commit:./bin/check-harness-parity
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: hook:hook:.githooks/pre-commit:./bin/check-toolchain-callers
+  kind: hook
+  selectors:
+  - hook:.githooks/pre-commit:./bin/check-toolchain-callers
+  source_paths:
+  - .githooks/pre-commit
+  covers:
+  - .githooks/pre-commit
+  contract: Retained receiving boundary at hook:.githooks/pre-commit:./bin/check-toolchain-callers
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: hook:hook:.githooks/pre-commit:./bin/multioperator validate --root . --staged
+  kind: hook
+  selectors:
+  - hook:.githooks/pre-commit:./bin/multioperator validate --root . --staged
+  source_paths:
+  - .githooks/pre-commit
+  covers:
+  - .githooks/pre-commit
+  contract: Retained receiving boundary at hook:.githooks/pre-commit:./bin/multioperator validate --root
+    . --staged
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: hook:hook:.githooks/pre-commit:./bin/check-candidate-partition --staged
+  kind: hook
+  selectors:
+  - hook:.githooks/pre-commit:./bin/check-candidate-partition --staged
+  source_paths:
+  - .githooks/pre-commit
+  covers:
+  - .githooks/pre-commit
+  contract: Retained receiving boundary at hook:.githooks/pre-commit:./bin/check-candidate-partition --staged
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001
+- id: hook:hook:.githooks/pre-commit:./bin/test-governance validate
+  kind: hook
+  selectors:
+  - hook:.githooks/pre-commit:./bin/test-governance validate
+  source_paths:
+  - .githooks/pre-commit
+  covers:
+  - .githooks/pre-commit
+  contract: Retained receiving boundary at hook:.githooks/pre-commit:./bin/test-governance validate
+  risk_class: baseline-pending-local-review
+  oracle: Existing assertion/output boundary retained; local marginal-value and witness judgments pending.
+  admission: Initial frozen recipient inventory at the Starter 1.9.0 retrofit; not donor proof admission
+    or claimed authoring evidence.
+  nearest_overlap: Pending bounded local assessment; all proofs remain executable.
+  tier: full
+  flake_rate: 0.0
+  replacement_lineage: *id001

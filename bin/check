@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+# Canonical repository build-gate entry point.
+
+set -euo pipefail
+
+entrypoint_path="${BASH_SOURCE[0]}"
+while [[ -L "$entrypoint_path" ]]; do
+  entrypoint_dir="$(cd "$(dirname "$entrypoint_path")" && pwd)"
+  entrypoint_path="$(readlink "$entrypoint_path")"
+  [[ "$entrypoint_path" == /* ]] || entrypoint_path="$entrypoint_dir/$entrypoint_path"
+done
+repo_root="$(cd "$(dirname "$entrypoint_path")/.." && pwd)"
+project_root="$repo_root"
+
+usage() {
+  cat <<'EOF'
+Usage: ./bin/check [all [--no-reuse]|report|lint|format|test|policy|vital|changed <ref>]
+
+Run the repository's build gates. The default and authoritative mode is "all".
+It stops at the first failing lane, because no receipt can follow a failure.
+Its test lane runs the proof families that changes since the last fully
+passing tree can affect, and every test when that tree is unknown; --no-reuse
+runs every test regardless.
+Report runs every lane, names each one that failed, and never produces a
+receipt: use it to see how far a tree is from passing.
+Vital and changed are governed lanes (changed is the local-commit and
+implementation-candidate gate) and never produce a full-gate receipt.
+EOF
+}
+
+if [[ $# -gt 2 ]]; then
+  usage >&2
+  exit 2
+fi
+
+gate_mode="${1:-all}"
+test_reuse=1
+if [[ "$gate_mode" == "all" && $# -eq 2 && "$2" == "--no-reuse" ]]; then
+  test_reuse=0
+  set -- all
+fi
+case "$gate_mode" in
+  all|report|lint|format|test|policy|vital)
+    if [[ $# -gt 1 ]]; then
+      usage >&2
+      exit 2
+    fi
+    ;;
+  changed)
+    if [[ $# -ne 2 || -z "${2:-}" ]]; then
+      usage >&2
+      exit 2
+    fi
+    ;;
+  --help|-h)
+    usage
+    exit 0
+    ;;
+  *)
+    echo "CHECK ERROR unknown mode: $gate_mode" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
+toolchain_helper="$repo_root/bin/_python-toolchain"
+if [[ ! -r "$toolchain_helper" ]]; then
+  echo "CHECK ERROR missing required file: bin/_python-toolchain" >&2
+  exit 1
+fi
+source "$toolchain_helper"
+python_toolchain_init CHECK
+
+if [[ ! -x "$repo_root/bin/test" ]]; then
+  echo "CHECK ERROR missing required executable: bin/test" >&2
+  exit 1
+fi
+
+for evidence_executable in \
+  kickoff-tree-id kickoff-evidence kickoff-config check-receipt execution-telemetry \
+  check-execution-dashboards check-harness-parity check-toolchain-callers \
+  lessons treatise check-catalogs check-hooks-installed check-shell-syntax new-name \
+  test-governance multioperator kickoff-command-zero \
+  normalize-final-newline check-candidate-partition docs; do
+  if [[ ! -x "$repo_root/bin/$evidence_executable" ]]; then
+    echo "CHECK ERROR missing required executable: bin/$evidence_executable" >&2
+    exit 1
+  fi
+done
+
+# Set only by report mode: every lane then runs, and failures are named at the end.
+report_failures=""
+
+run_gate() {
+  local gate_name="$1"
+  shift
+  local gate_started="$SECONDS"
+  echo "CHECK $gate_name START"
+  if "$@"; then
+    echo "CHECK $gate_name PASS $((SECONDS - gate_started))s"
+  else
+    local command_exit=$?
+    local gate_verdict=FAIL
+    if [[ "$command_exit" -eq 124 || "$command_exit" -ge 128 ]]; then
+      gate_verdict=INCOMPLETE
+      echo \
+        "CHECK $gate_name INCOMPLETE (exit $command_exit; correctness unknown)" \
+        "$((SECONDS - gate_started))s" >&2
+    else
+      echo "CHECK $gate_name FAIL (exit $command_exit) $((SECONDS - gate_started))s" >&2
+    fi
+    if [[ -n "$report_failures" ]]; then
+      printf '%s %s\n' "$gate_verdict" "$gate_name" >> "$report_failures"
+      return 0
+    fi
+    return "$command_exit"
+  fi
+}
+
+run_lint() {
+  (
+    cd "$project_root"
+    run_gate lint uv run --locked "${python_toolchain_uv_args[@]}" ruff check \
+      src tests lib bin/kickoff-config bin/kickoff-evidence \
+      bin/kickoff-tree-id bin/check-receipt bin/execution-telemetry \
+      bin/check-execution-dashboards bin/check-harness-parity \
+      bin/check-toolchain-callers bin/lessons bin/treatise bin/check-catalogs \
+      bin/check-hooks-installed bin/check-shell-syntax bin/new-name \
+      \
+      bin/check-plan-concreteness bin/check-plan-delivery bin/review-verdicts \
+      bin/kickoff-command-zero \
+      bin/normalize-final-newline bin/check-candidate-partition
+  )
+}
+
+run_format() {
+  (
+    cd "$project_root"
+    run_gate format uv run --locked "${python_toolchain_uv_args[@]}" ruff format --check \
+      src tests lib bin/kickoff-config bin/kickoff-evidence \
+      bin/kickoff-tree-id bin/check-receipt bin/execution-telemetry \
+      bin/check-execution-dashboards bin/check-harness-parity \
+      bin/check-toolchain-callers bin/lessons bin/treatise bin/check-catalogs \
+      bin/check-hooks-installed bin/check-shell-syntax bin/new-name \
+      \
+      bin/check-plan-concreteness bin/check-plan-delivery bin/review-verdicts \
+      bin/kickoff-command-zero \
+      bin/normalize-final-newline bin/check-candidate-partition
+  )
+}
+
+run_test() {
+  run_gate test "$repo_root/bin/test"
+}
+
+run_vital() {
+  run_gate vital "$repo_root/bin/test" --vital
+}
+
+run_changed() {
+  run_gate changed "$repo_root/bin/test" --changed-from "$1"
+}
+
+run_log() {
+  run_gate policy-log "$repo_root/bin/multioperator" validate --root "$repo_root"
+}
+
+run_policy() {
+  (
+    cd "$repo_root"
+    run_gate policy-harness-parity ./bin/check-harness-parity || return $?
+    run_gate policy-toolchain-callers ./bin/check-toolchain-callers || return $?
+    run_gate policy-execution-dashboards ./bin/check-execution-dashboards || return $?
+    run_gate policy-config ./bin/kickoff-config show || return $?
+    run_gate policy-catalogs ./bin/check-catalogs || return $?
+    run_gate policy-lessons ./bin/lessons validate || return $?
+    run_gate policy-treatise ./bin/treatise validate || return $?
+    run_gate policy-hooks-installed ./bin/check-hooks-installed || return $?
+    run_gate policy-shell-syntax ./bin/check-shell-syntax || return $?
+    run_log || return $?
+    run_gate policy-candidate-partition ./bin/check-candidate-partition || return $?
+    run_gate policy-docs ./bin/docs check || return $?
+    run_gate policy-test-governance ./bin/test-governance validate || return $?
+    run_gate policy-test-time ./bin/test-governance timing || return $?
+    [[ -n "$report_failures" ]] || echo "CHECK policy PASS"
+  )
+}
+
+# Catalog and report drift is bookkeeping that no lint or test run can repair, and both
+# checks take about a second. They run before the costly lanes so a stale tree stops there.
+run_early_guards() {
+  (
+    cd "$repo_root"
+    run_gate policy-execution-dashboards ./bin/check-execution-dashboards || return $?
+    run_gate policy-catalogs ./bin/check-catalogs || return $?
+  )
+}
+
+run_all() {
+  # Fail cheaply before tests; run_policy still revalidates at the final seam.
+  run_log || return $?
+  run_early_guards || return $?
+  run_lint || return $?
+  run_format || return $?
+  if [[ "$test_reuse" -eq 1 ]]; then
+    run_gate test "$repo_root/bin/test" --reuse || return $?
+  else
+    run_test || return $?
+  fi
+  run_policy || return $?
+}
+
+# A lane that dies outside run_gate (a failed cd, a missing tool) is still named.
+run_reported() {
+  local lane_name="$1"
+  shift
+  "$@" || printf 'INCOMPLETE %s\n' "$lane_name" >> "$report_failures"
+}
+
+run_report() {
+  local failed_lanes
+  local incomplete_lanes
+
+  report_failures="$(mktemp "${TMPDIR:-/tmp}/check-report.XXXXXX")"
+  trap 'rm -f "$report_failures"' EXIT
+  run_reported lint run_lint
+  run_reported format run_format
+  run_reported test run_test
+  run_reported policy run_policy
+  failed_lanes="$(awk '$1 == "FAIL" { printf " %s", $2 }' "$report_failures")"
+  incomplete_lanes="$(awk '$1 == "INCOMPLETE" { printf " %s", $2 }' "$report_failures")"
+  if [[ -z "$failed_lanes" && -z "$incomplete_lanes" ]]; then
+    echo "CHECK REPORT CLEAN (no receipt; ./bin/check all qualifies a push)"
+    return 0
+  fi
+  [[ -z "$failed_lanes" ]] || echo "CHECK REPORT FAILED:$failed_lanes" >&2
+  [[ -z "$incomplete_lanes" ]] || echo "CHECK REPORT INCOMPLETE:$incomplete_lanes" >&2
+  return 1
+}
+
+run_all_with_receipt() {
+  local receipt_tool="$repo_root/bin/check-receipt"
+  local candidate_before
+  local candidate_after
+  local candidate_exit
+  local log_path
+  local gate_exit
+  local log_exit
+  local final_exit
+  local outcome
+  local -a pipeline_status
+
+  candidate_before="$("$receipt_tool" candidate --root "$repo_root")"
+  log_path="$("$receipt_tool" begin --root "$repo_root" --candidate "$candidate_before")"
+  echo "CHECK RECEIPT LOG ${log_path#"$repo_root"/}"
+
+  set +e
+  run_all 2>&1 | tee "$log_path"
+  pipeline_status=("${PIPESTATUS[@]}")
+  set -e
+  gate_exit="${pipeline_status[0]}"
+  log_exit="${pipeline_status[1]}"
+
+  set +e
+  candidate_after="$("$receipt_tool" candidate --root "$repo_root")"
+  candidate_exit=$?
+  set -e
+
+  final_exit="$gate_exit"
+  outcome="failed"
+  if [[ "$log_exit" -ne 0 ]]; then
+    final_exit="$log_exit"
+    outcome="log-failed"
+    echo "CHECK ERROR durable log write failed (exit $log_exit): $log_path" >&2
+  elif [[ "$candidate_exit" -ne 0 ]]; then
+    candidate_after="ERROR"
+    final_exit=1
+    outcome="identity-error"
+    echo "CHECK ERROR could not identify the candidate after the full gate" >&2
+  elif [[ "$candidate_before" != "$candidate_after" ]]; then
+    final_exit=1
+    outcome="candidate-drift"
+    echo "CHECK ERROR candidate changed during the full gate" >&2
+  elif [[ "$gate_exit" -eq 0 ]]; then
+    final_exit=0
+    outcome="passed"
+  fi
+
+  set +e
+  "$receipt_tool" complete \
+    --root "$repo_root" \
+    --log "$log_path" \
+    --candidate-before "$candidate_before" \
+    --candidate-after "$candidate_after" \
+    --exit-code "$final_exit" \
+    --outcome "$outcome"
+  local receipt_exit=$?
+  set -e
+  if [[ "$receipt_exit" -ne 0 ]]; then
+    echo "CHECK ERROR could not persist the full-gate result (exit $receipt_exit)" >&2
+    if [[ "$final_exit" -eq 0 ]]; then
+      return "$receipt_exit"
+    fi
+  fi
+  return "$final_exit"
+}
+
+cd "$repo_root"
+python_toolchain_probe
+
+case "$gate_mode" in
+  lint) run_lint ;;
+  format) run_format ;;
+  test) run_test ;;
+  policy) run_policy ;;
+  vital) run_vital ;;
+  changed) run_changed "$2" ;;
+  report) run_report ;;
+  all) run_all_with_receipt ;;
+esac

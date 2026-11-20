@@ -1,0 +1,239 @@
+"""POSIX test-command hang supervision, separate from performance measurement."""
+
+from __future__ import annotations
+
+import math
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+
+INCOMPLETE = 124
+DEFAULT_HANG_SECONDS = 1800
+
+
+def _stop(process: subprocess.Popen[str], grace: float) -> str:
+    """Escalate within the one owned group, retaining any cleanup uncertainty."""
+    errors = []
+    for signum in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(process.pid, signum)
+        except ProcessLookupError:
+            pass
+        except PermissionError as exc:
+            errors.append(f"owned group cleanup could not signal {signum}: {exc}")
+        if signum == signal.SIGTERM:
+            try:
+                process.communicate(timeout=grace)
+            except subprocess.TimeoutExpired:
+                pass
+    return "\n".join(errors)
+
+
+SETTLE_POLL_SECONDS = 0.005
+
+
+def _group_outstanding(group_id: int, settle: float) -> bool:
+    """Whether the child's group still has a member after its leader exited.
+
+    A refused probe is ambiguous. For a few milliseconds after the last member of a
+    group exits, and before the system has finished collecting it, this platform refuses
+    a signal to that group exactly as it would refuse one to a group the caller may not
+    signal. Counting the refusal as a live child reported finished commands as incomplete
+    under parallel load. So a refusal is probed again within the cleanup grace: a group
+    that turns out to be gone is finished, one that answers is outstanding, and one still
+    refusing at the deadline is treated as outstanding, because that cannot be told apart
+    from a child that escaped.
+    """
+    deadline = time.monotonic() + settle
+    while True:
+        try:
+            os.killpg(group_id, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                return True
+            time.sleep(SETTLE_POLL_SECONDS)
+            continue
+        return True
+
+
+def run_command(
+    command: Sequence[str],
+    *,
+    cwd: Path,
+    timeout: float = DEFAULT_HANG_SECONDS,
+    capture: bool = False,
+    cleanup_grace: float = 0.5,
+) -> subprocess.CompletedProcess[str]:
+    """Return 124 for incomplete work; preserve completed child statuses.
+
+    The monotonic deadline includes child setup/teardown and ignores chatter.
+    The child owns a new session: TERM/INT/HUP are forwarded through this
+    supervisor; SIGKILL of the supervisor cannot be handled. Startup before
+    this process and descendants detaching again need enclosing supervision.
+    """
+    if isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("hang deadline must be finite and positive")
+    if isinstance(cleanup_grace, bool) or not math.isfinite(cleanup_grace) or cleanup_grace <= 0:
+        raise ValueError("cleanup grace must be finite and positive")
+    old_handlers = {}
+    process = None
+    cancelled = False
+    cleaning = False
+
+    def interrupted(_signum: int, _frame: object) -> None:
+        nonlocal cancelled
+        cancelled = True
+        if process is not None and not cleaning:
+            raise InterruptedError("supervisor interrupted")
+
+    if threading.current_thread() is threading.main_thread():
+        for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            old_handlers[signum] = signal.signal(signum, interrupted)
+    try:
+        process = subprocess.Popen(
+            list(command),
+            cwd=cwd,
+            text=True,
+            start_new_session=True,
+            stdout=subprocess.PIPE if capture else None,
+            stderr=subprocess.PIPE if capture else None,
+        )
+        cleanup_detail = ""
+        try:
+            if cancelled:
+                raise InterruptedError("interrupted during child startup")
+            stdout, stderr = process.communicate(timeout=timeout)
+            code = process.returncode
+            if code < 0 or _group_outstanding(process.pid, cleanup_grace):
+                cleaning = True
+                cleanup_detail = _stop(process, cleanup_grace)
+                code = INCOMPLETE
+        except (subprocess.TimeoutExpired, InterruptedError, KeyboardInterrupt):
+            cleaning = True
+            cleanup_detail = _stop(process, cleanup_grace)
+            try:
+                stdout, stderr = process.communicate(timeout=2)
+            except subprocess.TimeoutExpired as exc:
+                stdout = exc.output or ""
+                stderr = exc.stderr or ""
+                if isinstance(stdout, bytes):
+                    stdout = stdout.decode(errors="replace")
+                if isinstance(stderr, bytes):
+                    stderr = stderr.decode(errors="replace")
+                stderr += "\noutput drain incomplete; a descendant escaped supervision"
+            code = INCOMPLETE
+        if code == INCOMPLETE:
+            diagnostic = (
+                "TEST INCOMPLETE: hang, interruption or outstanding child; correctness unknown"
+            )
+            if cleanup_detail:
+                diagnostic += "\n" + cleanup_detail
+            if capture:
+                stderr = (stderr or "") + "\n" + diagnostic
+            else:
+                print(diagnostic, file=sys.stderr, flush=True)
+        return subprocess.CompletedProcess(list(command), code, stdout or "", stderr or "")
+    finally:
+        for signum, handler in old_handlers.items():
+            signal.signal(signum, handler)
+
+
+def pytest_arguments(arguments: Sequence[str]) -> list[str]:
+    """Parallelize independent pytest work without multiplying nested pools.
+
+    Explicit pytest worker options remain the diagnostic override. Single-function
+    selections and collection do not repay worker startup. Automatic workers use
+    the scheduler's CPU-based bound, with an explicit pytest diagnostic override.
+    """
+    args = list(arguments)
+    if args[:2] != ["-m", "pytest"]:
+        return args
+    selected = [arg for arg in args[2:] if "::" in arg and not arg.startswith("-")]
+    explicit = any(
+        arg == "-n" or arg.startswith("--numprocesses") or arg.startswith("-n") for arg in args[2:]
+    )
+    nested = bool(os.environ.get("PYTEST_XDIST_WORKER"))
+    if nested:
+        # Last option wins, including an inherited explicit automatic worker request.
+        return [*args, "-n", "0"]
+    if explicit:
+        return [*args[:2], "--dist=loadgroup", "--max-worker-restart=0", *args[2:]]
+    if "--collect-only" in args or len(selected) == 1:
+        return [*args[:2], "-n", "0", *args[2:]]
+    return [
+        *args[:2],
+        "-n",
+        "auto",
+        "--dist=loadgroup",
+        "--max-worker-restart=0",
+        *args[2:],
+    ]
+
+
+SCRIPT_SHEBANG = b"#!/usr/bin/env -S uv run --script"
+
+
+def prepare_script_environments(
+    root: Path, arguments: Sequence[str], environment: Mapping[str, str] | None = None
+) -> list[str]:
+    """Build each script tool's cached environment once, before parallel workers start.
+
+    A tool that declares its own dependencies gets an environment the first time it runs.
+    Parallel workers that all start such a tool at once build that environment together,
+    and each can remove what another is using. Building it here, serially, leaves the
+    workers nothing to build. Returns the tools prepared; a tool that cannot be prepared
+    is named and left for its own test to report.
+
+    The build lands in whichever cache `environment` selects, the caller's own by default.
+    A project that gives each worker a private cache gains nothing from the supervisor's
+    build, so each worker passes its own environment here before it runs tools together.
+    """
+    if "-n" in arguments and arguments[arguments.index("-n") + 1] == "0":
+        return []
+    prepared = []
+    for tool in sorted((root / "bin").glob("*")):
+        try:
+            if not tool.is_file() or not tool.read_bytes().startswith(SCRIPT_SHEBANG):
+                continue
+        except OSError:
+            continue
+        built = subprocess.run(
+            ["uv", "sync", "--script", str(tool), "--quiet"],
+            capture_output=True,
+            text=True,
+            env=None if environment is None else dict(environment),
+        )
+        if built.returncode == 0:
+            prepared.append(tool.name)
+        else:
+            print(
+                f"TEST NOTE: could not prepare {tool.name}: {built.stderr.strip()}", file=sys.stderr
+            )
+    return prepared
+
+
+def main() -> int:
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    try:
+        manifest = yaml.safe_load((root / "tests/proof-estate.yaml").read_text())
+        timeout = manifest["hang_timeout_seconds"]
+        arguments = pytest_arguments(sys.argv[1:])
+        prepare_script_environments(root, arguments)
+        result = run_command([sys.executable, *arguments], cwd=root, timeout=timeout)
+    except (OSError, ValueError, TypeError, KeyError, yaml.YAMLError) as exc:
+        print(f"TEST INCOMPLETE: supervisor could not run: {exc}", file=sys.stderr)
+        return INCOMPLETE
+    return result.returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

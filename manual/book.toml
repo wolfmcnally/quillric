@@ -1,0 +1,28 @@
+[book]
+title = "Quillric Manual"
+authors = ["Wolf McNally"]
+description = "Turn one audio or video file into a self-contained, diarized transcription package."
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../.kickoff/manual"
+create-missing = false
+
+[preprocessor.admonish]
+command = "mdbook-admonish"
+assets_version = "3.0.3" # do not edit: managed by `mdbook-admonish install`
+on_failure = "bail"
+
+[output.html]
+site-url = "/"
+additional-css = ["mdbook-admonish.css"]
+
+[output.html.playground]
+runnable = false
+
+[output.html.search]
+enable = true
+
+[output.html.print]
+enable = true

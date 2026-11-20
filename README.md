@@ -504,8 +504,10 @@ process replacing filesystem entries concurrently between validation and I/O.
 
 ```sh
 python3 -m pip install '.[fingerprint]'
-python3 -m unittest discover -s tests -v
+python3 .github/scripts/test.py
 ```
+
+That runs the product suite: every `tests/test_*.py` module that uses `unittest`. The same directory also holds the development methodology's pytest proofs; `./bin/setup` provisions the locked development environment and `./bin/check all` runs both with every repository gate.
 
 The suite covers configuration resolution, safe credential loading, output-path
 safety, API request construction, cross-origin credential stripping, terminal,

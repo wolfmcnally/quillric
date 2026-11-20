@@ -7,3 +7,34 @@ analysis/
 .DS_Store
 __pycache__/
 *.py[cod]
+
+# Methodology fixtures are tracked; other fixtures/ directories stay private.
+!/tests/fixtures/
+
+# Python build artifacts, environments and tool caches
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Agentic harness runtime state and generated views
+.claude/scheduled_tasks.lock
+.claude/settings.local.json
+.claude/projects/
+.codex/cache/
+.kickoff/
+/.collaboration-views/

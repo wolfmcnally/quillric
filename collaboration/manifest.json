@@ -1,0 +1,17 @@
+{
+  "active_imports": [],
+  "adopted": false,
+  "format": "starter.multioperator.v1",
+  "historical_plans": {
+    "plan/01-dependency-ready.md": "73724e3eb251cd2223e5b9f96cfbc467ad5f780a28ee59add4f41d7b143686b4",
+    "plan/02-retry-refused-requests.md": "5aea36860995a7579c9b168a50931330bbef552416b64660d8eaaeb3352726d4",
+    "plan/03-configuration-selected-providers.md": "588f43769d3594c3be52a4ae7ec5211017ea36171d6dc303ce8e5e8390dda4b4"
+  },
+  "mode": "retrofit",
+  "original_log_bytes": 0,
+  "original_log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "phase_mapping": {},
+  "source_archive_sha256": "8a4d148a27768fdd9a499d58243361d11974ec4d076bc5cff44a2e8e152d49c9",
+  "source_commit": "f67b6af1e0dd4ae14c39f062a224494274fce3d7",
+  "writer": "quillric-maintainer"
+}

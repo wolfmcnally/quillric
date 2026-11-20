@@ -1,0 +1,16 @@
+{
+  "compatibility": {
+    "gate": "passed",
+    "installed": "2.1.329",
+    "instruction_loading": "not-observed",
+    "minimum": "2.1.290",
+    "probe_scope": "invoking host PATH"
+  },
+  "loading_qualified": false,
+  "remaining": [
+    "Approved recipient-local atomic methodology/toolchain/caller/proof bundle",
+    "Owner decisions for prospective phases; no historical acceptance inferred",
+    "Settled work, external custody and terminal native/review boundaries",
+    "Recipient validation, retirement audit, full gate and instruction loading"
+  ]
+}
